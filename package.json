@@ -1,0 +1,44 @@
+{
+  "name": "paypal-milestoneos",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Autonomous AI-verified escrow, equipment procurement, and milestone payout OS built on PayPal.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.mts"
+  },
+  "dependencies": {
+    "@bryntum/gantt": "npm:@bryntum/gantt-trial@^7.3.8",
+    "@paypal/paypal-server-sdk": "^2.5.0",
+    "@paypal/react-paypal-js": "^10.6.1",
+    "ag-grid-community": "^36.3.0",
+    "ag-grid-react": "^36.3.0",
+    "better-sqlite3": "^13.0.3",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.72.0",
+    "next": "^15.5.29",
+    "openai": "^7.55.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tailwind-merge": "^3.7.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "autoprefixer": "^10.6.2",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^3.4.19",
+    "tsx": "^4.23.15",
+    "typescript": "5.9"
+  }
+}

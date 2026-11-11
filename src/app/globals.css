@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: #070b14;
+  color: #e5e7eb;
+}
+
+body {
+  background-image: radial-gradient(1200px 500px at 15% -10%, rgba(0, 112, 186, 0.18), transparent),
+    radial-gradient(900px 400px at 90% -5%, rgba(16, 185, 129, 0.1), transparent);
+  background-attachment: fixed;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #26335a;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ag-theme-milestone .ag-cell {
+  display: flex;
+  align-items: center;
+}
+
+/* Bryntum Gantt task colours keyed by escrow status (class set from ganttData.ts). */
+.mos-bryntum .b-gantt-task.mos-PAID_OUT,
+.mos-bryntum .b-gantt-task.mos-CAPTURED {
+  background-color: #059669 !important;
+}
+.mos-bryntum .b-gantt-task.mos-AUTHORIZED {
+  background-color: #0070ba !important;
+}
+.mos-bryntum .b-gantt-task.mos-AI_AUDITING {
+  background-color: #7c3aed !important;
+}
+.mos-bryntum .b-gantt-task.mos-REVISION_NEEDED {
+  background-color: #d97706 !important;
+}
+.mos-bryntum .b-gantt-task.mos-SECURITY_FLAGGED {
+  background-color: #dc2626 !important;
+}
+.mos-bryntum .b-gantt-task.mos-READY_TO_ORDER {
+  background-color: #0284c7 !important;
+}
+.mos-bryntum .b-gantt-task.mos-PENDING_FUNDING,
+.mos-bryntum .b-gantt-task.mos-DRAFT,
+.mos-bryntum .b-gantt-task.mos-VOIDED {
+  background-color: #475569 !important;
+}
+.mos-bryntum .b-gantt-task.mos-REFUNDED {
+  background-color: #a21caf !important;
+}
+.mos-bryntum .b-gantt-task.mos-unlock,
+.mos-bryntum .b-gantt-task.mos-payout {
+  color: #34d399;
+}
+.mos-bryntum .b-gantt-task.mos-unlock:not(.mos-unlocked) {
+  color: #94a3b8;
+}

@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: paypal-milestoneos
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/env
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: NEXT_PUBLIC_PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CHANNEL3_API_KEY
+        sync: false
+      # Render's free tier has an ephemeral disk; demo data is re-seeded on boot.
+      - key: DATABASE_PATH
+        value: /tmp/milestoneos.db
+      # Set to false for a real production deployment (hides demo mode and blocks demo endpoints).
+      - key: ENABLE_DEMO_TOOLS
+        value: true
