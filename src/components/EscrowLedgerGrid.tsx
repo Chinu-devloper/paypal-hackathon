@@ -400,7 +400,7 @@ function DetailRowRenderer(p: ICellRendererParams<Row>) {
   const expiry = item.authorizationExpiresAt ? fmtDateTime(item.authorizationExpiresAt) : null;
 
   return (
-    <div className="grid h-full grid-cols-1 gap-6 overflow-auto bg-ink-900/40 px-6 py-4 md:grid-cols-3" style={{ boxShadow: "inset 3px 0 0 #009CDE" }}>
+    <div className="grid h-full grid-cols-1 gap-6 overflow-auto whitespace-normal break-words bg-ink-900/40 px-6 py-4 md:grid-cols-[repeat(3,minmax(0,1fr))]" style={{ boxShadow: "inset 3px 0 0 #009CDE" }}>
       <section aria-label="Acceptance criteria">
         <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Acceptance criteria</h4>
         {item.acceptanceCriteria.length === 0 ? (

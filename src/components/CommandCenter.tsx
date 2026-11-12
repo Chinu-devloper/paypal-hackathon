@@ -11,6 +11,7 @@ import { Reveal, Scene, useCountUp, useScrolled } from "./motion";
 import { ThemeToggle } from "./ThemeToggle";
 import { TimelineView } from "./TimelineView";
 import { NewProjectModal } from "./NewProjectModal";
+import { ProjectSwitcher } from "./ProjectSwitcher";
 import { EnvInfoModal, InspectorDrawer, ReceiptModal } from "./Panels";
 import { EscrowFlow } from "./EscrowFlow";
 import { ScopeInsightCard } from "./ScopeInsightCard";
@@ -27,12 +28,12 @@ type View = "home" | "workspace";
 const MODE_STORAGE_KEY = "mos-mode";
 const DEFAULT_MODE: Mode = process.env.NEXT_PUBLIC_DEFAULT_MODE === "user" ? "user" : "demo";
 
-// Demo mode names the sponsor tools; end-user mode uses plain product language.
-const TABS: Array<{ key: TabKey; demoLabel: string; userLabel: string; icon: typeof Grid3x3 }> = [
-  { key: "ledger", demoLabel: "AG Grid Escrow & Procurement Matrix", userLabel: "Escrow Ledger", icon: Grid3x3 },
-  { key: "timeline", demoLabel: "Bryntum Project & Payment Timeline", userLabel: "Timeline", icon: CalendarRange },
-  { key: "market", demoLabel: "Channel3 Equipment Marketplace", userLabel: "Equipment Marketplace", icon: ShoppingBag },
-  { key: "inspector", demoLabel: "APIMatic SDK & Webhook Inspector", userLabel: "Audit Trail", icon: Activity },
+// Demo mode adds a small sponsor tag next to each tab name.
+const TABS: Array<{ key: TabKey; label: string; sponsor: string; icon: typeof Grid3x3 }> = [
+  { key: "ledger", label: "Escrow Ledger", sponsor: "AG Grid", icon: Grid3x3 },
+  { key: "timeline", label: "Timeline", sponsor: "Bryntum", icon: CalendarRange },
+  { key: "market", label: "Marketplace", sponsor: "Channel3", icon: ShoppingBag },
+  { key: "inspector", label: "Audit Trail", sponsor: "APIMatic", icon: Activity },
 ];
 
 interface Bundle {
@@ -307,27 +308,19 @@ export function CommandCenter() {
 
         <div className="ml-auto flex flex-wrap items-center gap-2 lg:flex-nowrap">
           {view === "workspace" && (<>
-          <label className="sr-only" htmlFor="scenario">Project</label>
-          <select
-            id="scenario"
-            value={projectId ?? ""}
-            onChange={(e) => {
-              if (e.target.value === "__new") return setShowNew(true);
+          <ProjectSwitcher
+            projects={visibleProjects}
+            value={projectId}
+            onNew={() => setShowNew(true)}
+            onSelect={(id) => {
               setSelectedId(null);
               setInspectId(null);
-              void reload(e.target.value);
+              void reload(id);
             }}
-            className="max-w-[230px] rounded-lg border border-white/10 bg-ink-950/50 px-3 py-2 text-sm text-white transition focus:border-pp-sky focus:outline-none focus:ring-2 focus:ring-pp-sky/30"
-          >
-            {visibleProjects.map((p) => (
-              <option key={p.id} value={p.id}>{p.scenarioKey ? `Scenario ${p.scenarioKey.replace("scn", "")}: ${p.title}` : p.title}</option>
-            ))}
-            <option value="__new">+ New Project...</option>
-          </select>
+          />
 
           {demoMode && <Button variant="outline" size="sm" onClick={() => setShowTelemetry(true)}><Activity className="h-4 w-4" /> API Telemetry</Button>}
           </>)}
-          <Button size="sm" onClick={() => setShowNew(true)}><Sparkles className="h-4 w-4" /> New Project</Button>
           {demoMode && view === "workspace" && <Button variant="ghost" size="sm" onClick={resetDemo} aria-label="Reset demo data" title="Reset demo data"><RotateCcw className="h-4 w-4" /></Button>}
           <ThemeToggle />
           {env?.demoTools && (
@@ -388,7 +381,8 @@ export function CommandCenter() {
             onClick={() => setTab(t.key)}
             className={cn("flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-medium transition-colors duration-200", tab === t.key ? "text-white" : "text-slate-400 hover:text-slate-200")}
           >
-            <t.icon className={cn("h-4 w-4 transition-colors", tab === t.key && "text-pp-sky")} aria-hidden /> {demoMode ? t.demoLabel : t.userLabel}
+            <t.icon className={cn("h-4 w-4 transition-colors", tab === t.key && "text-pp-sky")} aria-hidden /> {t.label}
+            {demoMode && <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300">{t.sponsor}</span>}
           </button>
         ))}
         <span
@@ -407,7 +401,18 @@ export function CommandCenter() {
               <Button onClick={() => setShowNew(true)}><Sparkles className="h-4 w-4" /> Create your first project</Button>
             </Card>
           ) : (
-            <Card className="p-8 text-center text-sm text-slate-400">{loadError ? "Could not load the project." : "Loading project..."}</Card>
+            <Card className="space-y-3 p-6" aria-busy={!loadError}>
+              {loadError ? (
+                <p className="text-center text-sm text-slate-400">Could not load the project.</p>
+              ) : (
+                <>
+                  <div className="h-4 w-1/3 animate-pulse rounded bg-white/10" />
+                  <div className="h-10 animate-pulse rounded bg-white/[0.07]" />
+                  <div className="h-10 animate-pulse rounded bg-white/[0.07]" />
+                  <div className="h-10 w-4/5 animate-pulse rounded bg-white/[0.07]" />
+                </>
+              )}
+            </Card>
           )
         ) : tab === "ledger" ? (
           <EscrowLedgerGrid
