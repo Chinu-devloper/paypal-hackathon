@@ -17,6 +17,11 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      # The key is a Gemini key used through Google's OpenAI-compatible endpoint. Remove both lines to use OpenAI itself.
+      - key: OPENAI_BASE_URL
+        value: https://generativelanguage.googleapis.com/v1beta/openai/
+      - key: OPENAI_MODEL
+        value: gemini-flash-lite-latest
       - key: CHANNEL3_API_KEY
         sync: false
       # Render's free tier has an ephemeral disk; demo data is re-seeded on boot.
