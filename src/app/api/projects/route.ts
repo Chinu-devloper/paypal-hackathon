@@ -3,6 +3,7 @@ import { handle, json, readBody } from "@/server/http";
 import { generateScope, MAX_BUDGET, MAX_PROMPT_CHARS, MIN_BUDGET } from "@/server/ai/scope";
 import { searchProducts } from "@/server/channel3";
 import { itemsFromPlan } from "@/server/items";
+import { recommendProduct } from "@/server/procurement";
 import { addAuditLog, insertProject, listProjects } from "@/server/repo";
 import type { Project } from "@/shared/types";
 import { EMAIL_RE, newId } from "@/server/utils";
@@ -37,12 +38,14 @@ export async function POST(req: Request) {
       scope: insight,
     };
     const items = itemsFromPlan(project.id, plan, body.freelancerEmail);
-    for (const item of items) {
-      if (item.kind === "PROCUREMENT" && item.searchQuery) {
-        const found = await searchProducts(item.searchQuery, item.maxBudget, 3);
+    await Promise.all(
+      items.map(async (item) => {
+        if (item.kind !== "PROCUREMENT" || !item.searchQuery) return;
+        const found = await searchProducts(item.searchQuery, item.maxBudget, 3, project.id);
         item.candidates = found.products;
-      }
-    }
+        item.recommendation = await recommendProduct(item, found.products, false);
+      }),
+    );
     insertProject(project, items);
     addAuditLog(project.id, null, "INFO", "PROJECT_CREATED", `AI Scope Architect (${engine}) generated ${plan.milestones.length} milestone(s) and ${plan.procurementItems.length} procurement item(s).`);
     return json({ project, items, engine, note: note ?? null }, 201);

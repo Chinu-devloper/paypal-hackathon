@@ -4,7 +4,7 @@ import { APPROVAL_THRESHOLD, type AuditRecord, type Citation, type CriterionResu
 import type { SourceBundle } from "../ingest/bundle";
 import { buildRecord, type AuditEmitter } from "./auditor";
 import { analyzeSource, type Forensics } from "./forensics";
-import { llmClient, llmModel } from "./llm";
+import { describeLlmError, llmClient, llmModel } from "./llm";
 import { conceptGroups, criterionKind, evaluateCriterionRepo, evidenceCap, retrieveSnippets, verifyCitations, type Finding, type Snippet } from "./repo-evidence";
 
 export interface RepoAuditInput {
@@ -178,7 +178,7 @@ export async function runRepoAudit(input: RepoAuditInput, emit: AuditEmitter = (
             if (!prior || score >= prior.finding.score) results.set(r.index, { finding: { criterion, score, evidence: r.evidence || prior?.finding.evidence || "", fix: r.fix, citations }, note: cap < Math.round(r.score) ? note : "" });
           }
         } catch (err) {
-          await emit(`[AGENT] Second look failed (${(err as Error).message.slice(0, 80)}); keeping the first assessment.`);
+          await emit(`[AGENT] Second look failed (${describeLlmError(err)}); keeping the first assessment.`);
         }
       }
 
@@ -191,7 +191,7 @@ export async function runRepoAudit(input: RepoAuditInput, emit: AuditEmitter = (
         await emit(`[INTEGRITY] REVIEW: ${reason}`);
       }
     } catch (err) {
-      await emit(`[AI AUDITOR] LLM unavailable (${(err as Error).message.replace(/\s+/g, " ").slice(0, 100)}); using the deterministic evidence engine.`);
+      await emit(`[AI AUDITOR] The AI model is unavailable (${describeLlmError(err)}); using the deterministic evidence engine.`);
       judged = baseline.map((finding) => ({ finding, note: "" }));
       engine = "demo-engine";
     }

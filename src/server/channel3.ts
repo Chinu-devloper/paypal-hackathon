@@ -1,9 +1,24 @@
 import { getEnvStatus } from "./env";
-import type { Product } from "../shared/types";
+import { PaymentError } from "./errors";
+import type { PriceInsight, Product, ProductOfferInfo, ProductPick } from "../shared/types";
 import { round2 } from "./utils";
 
-const CHANNEL3_BASE = "https://api.trychannel3.com/v1";
-const TIMEOUT_MS = 12_000;
+const CHANNEL3_ROOT = "https://api.trychannel3.com";
+const CHANNEL3_BASE = `${CHANNEL3_ROOT}/v1`;
+const TIMEOUT_MS = 25_000;
+const HISTORY_TIMEOUT_MS = 8_000;
+
+function liveKey(): string | null {
+  const key = process.env.CHANNEL3_API_KEY?.trim();
+  return getEnvStatus().channel3 && key ? key : null;
+}
+
+/** `x-user-id` makes Channel3 append our project id to buy URLs so clicks and commissions are attributable. */
+function headers(apiKey: string, userId?: string): Record<string, string> {
+  const h: Record<string, string> = { "x-api-key": apiKey, "Content-Type": "application/json" };
+  if (userId) h["x-user-id"] = userId;
+  return h;
+}
 
 interface CatalogEntry {
   id: string;
@@ -95,23 +110,38 @@ export function searchFallback(query: string, maxPrice: number | null, limit: nu
 interface Channel3Offer {
   url?: string;
   domain?: string;
-  price?: { price?: number; currency?: string };
+  price?: { price?: number; compare_at_price?: number | null; currency?: string };
   availability?: string;
 }
-interface Channel3Product {
+export interface Channel3Product {
   id?: string;
   title?: string;
+  description?: string | null;
   brands?: Array<{ name?: string }>;
   images?: Array<{ url?: string; cleaned_url?: string | null; is_main_image?: boolean }>;
+  key_features?: string[] | null;
   offers?: Channel3Offer[];
+  ratings?: { value?: number; count?: number } | null;
 }
 
-function mapLiveProduct(p: Channel3Product): Product | null {
-  const offer = (p.offers ?? [])
-    .filter((o) => typeof o.price?.price === "number")
-    .sort((a, b) => (a.price?.price ?? 0) - (b.price?.price ?? 0))[0];
-  if (!p.id || !p.title || !offer) return null;
+export function mapLiveProduct(p: Channel3Product): Product | null {
+  const priced = (p.offers ?? []).filter((o) => typeof o.price?.price === "number");
+  if (!p.id || !p.title || priced.length === 0) return null;
+  const byPrice = (a: Channel3Offer, b: Channel3Offer) => (a.price?.price ?? 0) - (b.price?.price ?? 0);
+  const inStockOffers = priced.filter((o) => o.availability !== "OutOfStock");
+  const offer = [...(inStockOffers.length > 0 ? inStockOffers : priced)].sort(byPrice)[0];
   const image = p.images?.find((i) => i.is_main_image) ?? p.images?.[0];
+  const offers: ProductOfferInfo[] = [...priced]
+    .sort(byPrice)
+    .slice(0, 6)
+    .map((o) => ({
+      merchant: o.domain ?? "merchant",
+      price: round2(o.price?.price ?? 0),
+      compareAt: typeof o.price?.compare_at_price === "number" ? round2(o.price.compare_at_price) : null,
+      inStock: o.availability !== "OutOfStock",
+      url: o.url ?? "",
+    }));
+  const compareAt = offer.price?.compare_at_price;
   return {
     id: p.id,
     title: p.title,
@@ -120,10 +150,143 @@ function mapLiveProduct(p: Channel3Product): Product | null {
     currency: offer.price?.currency ?? "USD",
     imageUrl: image?.cleaned_url ?? image?.url ?? null,
     url: offer.url ?? "",
-    rating: null,
-    inStock: offer.availability !== "OutOfStock",
+    rating: typeof p.ratings?.value === "number" && p.ratings.value > 0 ? Math.round(p.ratings.value * 10) / 10 : null,
+    ratingCount: typeof p.ratings?.count === "number" ? p.ratings.count : null,
+    brand: p.brands?.[0]?.name ?? null,
+    description: p.description ? p.description.slice(0, 280) : null,
+    features: (p.key_features ?? []).slice(0, 4),
+    offers,
+    compareAtPrice: typeof compareAt === "number" && compareAt > (offer.price?.price ?? 0) ? round2(compareAt) : null,
+    inStock: inStockOffers.length > 0,
     source: "channel3",
   };
+}
+
+// ---------------------------------------------------------------------------
+// Procurement agent: explainable ranking of candidates against the stipend cap
+// ---------------------------------------------------------------------------
+
+function usd(n: number): string {
+  return `$${n.toFixed(2)}`;
+}
+
+/** Scores one candidate out of 100. Every component adds a human-readable reason. */
+export function scoreProduct(p: Product, maxPrice: number | null): ProductPick {
+  const reasons: string[] = [];
+  let score = 0;
+
+  // Budget fit (25): cheaper inside the cap is better, over the cap scores nothing.
+  if (maxPrice === null) {
+    score += 15;
+  } else if (p.price <= maxPrice) {
+    score += 25 * (1 - 0.6 * (p.price / maxPrice));
+    reasons.push(`${usd(maxPrice - p.price)} under the ${usd(maxPrice)} stipend cap`);
+  } else {
+    reasons.push(`${usd(p.price - maxPrice)} OVER the ${usd(maxPrice)} stipend cap`);
+  }
+
+  // Social proof (25): rating weighted by how many reviews back it.
+  if (p.rating !== null) {
+    const confidence = p.ratingCount ? Math.min(1, p.ratingCount / 50) : 0.4;
+    score += 25 * (p.rating / 5) * (0.5 + 0.5 * confidence);
+    reasons.push(p.ratingCount ? `Rated ${p.rating.toFixed(1)}/5 across ${p.ratingCount.toLocaleString("en-US")} reviews` : `Rated ${p.rating.toFixed(1)}/5`);
+  } else {
+    score += 8;
+  }
+
+  // Price position against its own 90-day history (20).
+  const ins = p.priceInsight;
+  if (ins) {
+    const pct = ins.mean > 0 ? Math.round(Math.abs(1 - p.price / ins.mean) * 100) : 0;
+    if (ins.status === "low") {
+      score += 20;
+      reasons.push(`Priced low: ${usd(p.price)} vs ${usd(ins.mean)} 90-day average${pct > 0 ? ` (${pct}% below)` : ""}`);
+    } else if (ins.status === "typical") {
+      score += 12;
+      reasons.push(`Typical price for the last ${ins.days} days (${usd(ins.min)}-${usd(ins.max)})`);
+    } else {
+      score += 4;
+      reasons.push(`Priced high vs its ${usd(ins.mean)} 90-day average; consider waiting`);
+    }
+  } else {
+    score += 10;
+  }
+
+  // Merchant depth (10): several sellers means price competition and a fallback.
+  const merchants = p.offers?.length ?? 1;
+  score += Math.min(merchants, 5) * 2;
+  if (merchants > 1 && p.offers) {
+    reasons.push(`Sold by ${merchants} merchants, cheapest ${usd(p.offers[0].price)} at ${p.offers[0].merchant}`);
+  }
+
+  // Availability (10).
+  if (p.inStock) score += 10;
+  else reasons.push("Out of stock");
+
+  // Active discount (10).
+  if (p.compareAtPrice && p.compareAtPrice > p.price) {
+    const off = Math.round((1 - p.price / p.compareAtPrice) * 100);
+    score += Math.min(10, off / 2);
+    reasons.push(`${off}% off the ${usd(p.compareAtPrice)} list price`);
+  }
+
+  return { score: Math.max(0, Math.min(100, Math.round(score))), reasons };
+}
+
+/** Attaches a pick score to every product and returns them best-first. */
+export function rankProducts(products: Product[], maxPrice: number | null): Product[] {
+  return products
+    .map((p) => ({ ...p, pick: scoreProduct(p, maxPrice) }))
+    .sort((a, b) => (b.pick?.score ?? 0) - (a.pick?.score ?? 0));
+}
+
+interface PriceHistoryResponse {
+  history?: Array<{ timestamp: string; price: number }>;
+  statistics?: {
+    mean: number;
+    min_price: number;
+    max_price: number;
+    current_price: number;
+    current_status: "low" | "typical" | "high";
+  } | null;
+}
+
+/** Channel3 price tracking: 90 days of history plus a low/typical/high verdict for today's price. */
+export async function fetchPriceInsight(apiKey: string, productId: string): Promise<PriceInsight | null> {
+  try {
+    const res = await fetch(`${CHANNEL3_ROOT}/v0/price-tracking/history/${encodeURIComponent(productId)}?days=90`, {
+      headers: { "x-api-key": apiKey },
+      signal: AbortSignal.timeout(HISTORY_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as PriceHistoryResponse;
+    const s = data.statistics;
+    const history = data.history ?? [];
+    if (!s || history.length < 2) return null;
+    const step = Math.max(1, Math.ceil(history.length / 30));
+    const points = history.filter((_, i) => i % step === 0 || i === history.length - 1).map((h) => ({ t: h.timestamp, price: round2(h.price) }));
+    return {
+      status: s.current_status,
+      mean: round2(s.mean),
+      min: round2(s.min_price),
+      max: round2(s.max_price),
+      current: round2(s.current_price),
+      days: 90,
+      points,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Rank, enrich the leaders with price history, then re-rank with the history signal included. */
+async function rankAndEnrich(products: Product[], maxPrice: number | null, limit: number, apiKey: string | null): Promise<Product[]> {
+  const first = rankProducts(products, maxPrice).slice(0, limit);
+  if (!apiKey || first.every((p) => p.source !== "channel3")) return first;
+  const enriched = await Promise.all(
+    first.map(async (p) => (p.source === "channel3" ? { ...p, priceInsight: await fetchPriceInsight(apiKey, p.id) } : p)),
+  );
+  return rankProducts(enriched, maxPrice);
 }
 
 export interface SearchResult {
@@ -132,40 +295,105 @@ export interface SearchResult {
   note?: string;
 }
 
-export async function searchProducts(query: string, maxPrice: number | null, limit = 3): Promise<SearchResult> {
+function fallbackResult(q: string, maxPrice: number | null, limit: number, note?: string): SearchResult {
+  return { products: rankProducts(searchFallback(q, maxPrice, limit), maxPrice), source: "fallback", note };
+}
+
+function inBudgetLive(list: Channel3Product[] | undefined, maxPrice: number | null): Product[] {
+  return (list ?? [])
+    .map(mapLiveProduct)
+    .filter((p): p is Product => p !== null && p.inStock && (maxPrice === null || p.price <= maxPrice));
+}
+
+function priceFilters(maxPrice: number | null): Record<string, unknown> {
+  return maxPrice === null ? {} : { price: { max_price: maxPrice }, availability: ["InStock"] };
+}
+
+export async function searchProducts(query: string, maxPrice: number | null, limit = 3, userId?: string): Promise<SearchResult> {
   const q = query.trim();
   if (!q) return { products: [], source: "fallback", note: "Empty query" };
 
-  const apiKey = process.env.CHANNEL3_API_KEY?.trim();
-  if (getEnvStatus().channel3 && apiKey) {
+  const apiKey = liveKey();
+  if (apiKey) {
     try {
       const res = await fetch(`${CHANNEL3_BASE}/search`, {
         method: "POST",
-        headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
+        headers: headers(apiKey, userId),
         body: JSON.stringify({
           query: q,
-          limit: Math.max(limit * 4, 12),
-          filters: maxPrice === null ? {} : { price: { max_price: maxPrice }, availability: ["InStock"] },
+          limit: Math.min(30, Math.max(limit * 4, 12)),
+          filters: priceFilters(maxPrice),
         }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (!res.ok) throw new Error(`Channel3 responded with HTTP ${res.status}`);
       const data = (await res.json()) as { products?: Channel3Product[] };
-      const mapped = (data.products ?? [])
-        .map(mapLiveProduct)
-        .filter((p): p is Product => p !== null && p.inStock && (maxPrice === null || p.price <= maxPrice))
-        .slice(0, limit);
-      if (mapped.length > 0) return { products: mapped, source: "channel3" };
-      return { products: searchFallback(q, maxPrice, limit), source: "fallback", note: "Channel3 returned no in-budget results; showing curated catalog." };
+      const mapped = inBudgetLive(data.products, maxPrice);
+      if (mapped.length > 0) return { products: await rankAndEnrich(mapped, maxPrice, limit, apiKey), source: "channel3" };
+      return fallbackResult(q, maxPrice, limit, "Channel3 returned no in-budget results; showing curated catalog.");
     } catch (err) {
-      return {
-        products: searchFallback(q, maxPrice, limit),
-        source: "fallback",
-        note: `Channel3 unavailable (${(err as Error).message}); showing curated catalog.`,
-      };
+      return fallbackResult(q, maxPrice, limit, `Channel3 unavailable (${(err as Error).message}); showing curated catalog.`);
     }
   }
-  return { products: searchFallback(q, maxPrice, limit), source: "fallback" };
+  return fallbackResult(q, maxPrice, limit);
+}
+
+/** Channel3 /v1/similar: in-budget alternatives to a product (out of stock, over budget, or simply not liked). */
+export async function findSimilarProducts(product: Product, maxPrice: number | null, limit = 4, userId?: string): Promise<SearchResult> {
+  const apiKey = liveKey();
+  if (apiKey && product.source === "channel3") {
+    try {
+      const res = await fetch(`${CHANNEL3_BASE}/similar`, {
+        method: "POST",
+        headers: headers(apiKey, userId),
+        body: JSON.stringify({ product_id: product.id, limit: 20, filters: priceFilters(maxPrice) }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`Channel3 responded with HTTP ${res.status}`);
+      const data = (await res.json()) as { products?: Channel3Product[] };
+      const mapped = inBudgetLive(data.products, maxPrice).filter((p) => p.id !== product.id);
+      if (mapped.length > 0) return { products: await rankAndEnrich(mapped, maxPrice, limit, apiKey), source: "channel3" };
+      return { products: [], source: "channel3", note: "Channel3 found no similar in-budget products." };
+    } catch (err) {
+      return { products: [], source: "fallback", note: `Channel3 similar-products lookup failed (${(err as Error).message}).` };
+    }
+  }
+  const alt = searchFallback(product.title, maxPrice, limit + 1).filter((p) => p.id !== product.id).slice(0, limit);
+  return { products: rankProducts(alt, maxPrice), source: "fallback", note: "Curated catalog alternatives (Channel3 key not configured)." };
+}
+
+/** Channel3 /v1/lookup: paste any retailer product link and get structured data plus offers at other retailers. */
+export async function lookupProductByUrl(rawUrl: string, userId?: string): Promise<Product> {
+  const apiKey = liveKey();
+  if (!apiKey) throw new PaymentError("VALIDATION", "Product link lookup needs the Channel3 API key (not configured).", 503);
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new PaymentError("VALIDATION", "Enter a valid product link.", 422);
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw new PaymentError("VALIDATION", "Only http(s) product links are supported.", 422);
+  const res = await fetch(`${CHANNEL3_BASE}/lookup`, {
+    method: "POST",
+    headers: headers(apiKey, userId),
+    body: JSON.stringify({ url: url.toString() }),
+    signal: AbortSignal.timeout(TIMEOUT_MS * 2),
+  }).catch(() => null);
+  if (!res) throw new PaymentError("VALIDATION", "Channel3 did not respond in time.", 504);
+  if (!res.ok) {
+    throw new PaymentError("NOT_FOUND", res.status === 422 ? "That link is not a product page." : `Channel3 could not read that link (HTTP ${res.status}).`, res.status === 422 ? 422 : 404);
+  }
+  const data = (await res.json()) as { product?: Channel3Product };
+  const mapped = data.product ? mapLiveProduct(data.product) : null;
+  if (!mapped) throw new PaymentError("NOT_FOUND", "Channel3 found no price for that product.", 404);
+  return mapped;
+}
+
+/** Used by the lookup route: scores a single pasted product against the cap and attaches price history. */
+export async function enrichSingle(product: Product, maxPrice: number | null): Promise<Product> {
+  const apiKey = liveKey();
+  const withInsight = apiKey && product.source === "channel3" ? { ...product, priceInsight: await fetchPriceInsight(apiKey, product.id) } : product;
+  return { ...withInsight, pick: scoreProduct(withInsight, maxPrice) };
 }
 
 /** Re-checks the current price of an approved product just before checkout. */

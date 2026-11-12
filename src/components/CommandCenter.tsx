@@ -22,6 +22,7 @@ import type { ApiTelemetryEntry, AuditLogEntry, EnvStatus, LedgerItem, Product, 
 
 type TabKey = "ledger" | "timeline" | "market" | "inspector";
 type Mode = "demo" | "user";
+type View = "home" | "workspace";
 
 const MODE_STORAGE_KEY = "mos-mode";
 const DEFAULT_MODE: Mode = process.env.NEXT_PUBLIC_DEFAULT_MODE === "user" ? "user" : "demo";
@@ -60,6 +61,7 @@ export function CommandCenter() {
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [mode, setMode] = useState<Mode>(DEFAULT_MODE);
+  const [view, setView] = useState<View>("home");
   const [ready, setReady] = useState(false);
   const toastId = useRef(0);
   const scrolled = useScrolled(24);
@@ -75,6 +77,20 @@ export function CommandCenter() {
     const stored = window.localStorage.getItem(MODE_STORAGE_KEY);
     if (stored === "demo" || stored === "user") setMode(stored);
   }, []);
+
+  // The URL hash picks the page so the browser back button works.
+  useEffect(() => {
+    const sync = () => setView(window.location.hash === "#workspace" ? "workspace" : "home");
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
+
+  const openView = (next: View) => {
+    window.location.hash = next === "workspace" ? "workspace" : "";
+    setView(next);
+    window.scrollTo({ top: 0 });
+  };
 
   const changeMode = (next: Mode) => {
     setMode(next);
@@ -177,6 +193,31 @@ export function CommandCenter() {
       if (res.note) toast("info", res.note);
     });
 
+  const findSimilar = (item: LedgerItem, product: Product) =>
+    withBusy(item.id, async () => {
+      const res = await api<{ note: string | null }>(`/api/items/${item.id}/similar`, { body: { productId: product.id } });
+      toast(res.note ? "info" : "success", res.note ?? "Showing in-budget alternatives found by Channel3 similar-products.");
+    });
+
+  const addProductLink = (item: LedgerItem, url: string) =>
+    withBusy(item.id, async () => {
+      const res = await api<{ product: Product; overBudget: boolean }>(`/api/items/${item.id}/lookup`, { body: { url } });
+      toast(res.overBudget ? "info" : "success", res.overBudget ? `Resolved "${res.product.title}" but it is over the stipend cap.` : `Resolved "${res.product.title}" via Channel3 and scored it against the cap.`);
+    });
+
+  /** Persists a Bryntum Gantt drag/resize. Resolves false when the server rejects it so the Gantt can snap back. */
+  const reschedule = async (itemId: string, startDate: string, endDate: string): Promise<boolean> => {
+    try {
+      await api(`/api/items/${itemId}/schedule`, { body: { startDate, endDate } });
+      toast("success", `Schedule saved: ${startDate} to ${endDate}.`);
+      await reload();
+      return true;
+    } catch (err) {
+      toast("error", err instanceof ApiError ? err.message : "Could not save the new dates");
+      return false;
+    }
+  };
+
   const editAmount = async (item: LedgerItem, amount: number) => {
     try {
       await api(`/api/items/${item.id}/amount`, { body: { amount } });
@@ -240,9 +281,22 @@ export function CommandCenter() {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-pp-blue to-pp-sky text-[#fff] shadow-lg shadow-sky-500/30 ring-1 ring-white/20"><ShieldCheck className="h-5 w-5" aria-hidden /></div>
           <div className="leading-tight">
             <div className="text-sm font-semibold tracking-tight text-white">PayPal MilestoneOS</div>
-            <div className="hidden text-[11px] text-slate-400 md:block">AI-verified escrow, procurement & autonomous payouts</div>
+            <div className="hidden text-[11px] text-slate-400 2xl:block">AI-verified escrow, procurement & autonomous payouts</div>
           </div>
         </div>
+
+        <nav aria-label="Pages" className="ml-1 flex items-center gap-1 text-sm font-medium">
+          {([["home", "Home"], ["workspace", "Workspace"]] as const).map(([key, label]) => (
+            <button
+              key={key}
+              aria-current={view === key ? "page" : undefined}
+              onClick={() => openView(key)}
+              className={cn("rounded-lg px-3 py-1.5 transition duration-200", view === key ? "bg-white/10 text-white" : "text-slate-400 hover:text-white")}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
         <span className={cn("ml-2 hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset sm:inline-flex", sandboxLive ? "bg-emerald-500/15 text-emerald-300 ring-emerald-400/40" : "bg-amber-500/10 text-amber-300 ring-amber-400/30")}>
           <span className="relative flex h-1.5 w-1.5">
             <span className={cn("absolute inline-flex h-full w-full animate-ping-slow rounded-full", sandboxLive ? "bg-emerald-400/70" : "bg-amber-400/70")} aria-hidden />
@@ -251,21 +305,8 @@ export function CommandCenter() {
           {sandboxLive ? "PayPal Sandbox Connected" : "PayPal Sandbox (Simulated)"}
         </span>
 
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          {env?.demoTools && (
-            <div role="group" aria-label="Application mode" className="inline-flex rounded-lg border border-white/10 bg-ink-950/50 p-0.5 text-xs font-medium">
-              {([["demo", "Demo mode"], ["user", "End-user mode"]] as const).map(([key, label]) => (
-                <button
-                  key={key}
-                  aria-pressed={(demoMode ? "demo" : "user") === key}
-                  onClick={() => changeMode(key)}
-                  className={cn("rounded-md px-3 py-1.5 transition duration-200", (demoMode ? "demo" : "user") === key ? "bg-gradient-to-b from-pp-sky to-pp-blue text-[#fff] shadow-md shadow-sky-500/30" : "text-slate-400 hover:text-white")}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="ml-auto flex flex-wrap items-center gap-2 lg:flex-nowrap">
+          {view === "workspace" && (<>
           <label className="sr-only" htmlFor="scenario">Project</label>
           <select
             id="scenario"
@@ -276,7 +317,7 @@ export function CommandCenter() {
               setInspectId(null);
               void reload(e.target.value);
             }}
-            className="max-w-[280px] rounded-lg border border-white/10 bg-ink-950/50 px-3 py-2 text-sm text-white transition focus:border-pp-sky focus:outline-none focus:ring-2 focus:ring-pp-sky/30"
+            className="max-w-[230px] rounded-lg border border-white/10 bg-ink-950/50 px-3 py-2 text-sm text-white transition focus:border-pp-sky focus:outline-none focus:ring-2 focus:ring-pp-sky/30"
           >
             {visibleProjects.map((p) => (
               <option key={p.id} value={p.id}>{p.scenarioKey ? `Scenario ${p.scenarioKey.replace("scn", "")}: ${p.title}` : p.title}</option>
@@ -284,16 +325,34 @@ export function CommandCenter() {
             <option value="__new">+ New Project...</option>
           </select>
 
-          {demoMode && <Button variant="outline" size="sm" onClick={() => setShowTelemetry(true)}><Activity className="h-4 w-4" /> APIMatic Live API Telemetry</Button>}
+          {demoMode && <Button variant="outline" size="sm" onClick={() => setShowTelemetry(true)}><Activity className="h-4 w-4" /> API Telemetry</Button>}
+          </>)}
           <Button size="sm" onClick={() => setShowNew(true)}><Sparkles className="h-4 w-4" /> New Project</Button>
-          {demoMode && <Button variant="ghost" size="sm" onClick={resetDemo} aria-label="Reset demo data" title="Reset demo data"><RotateCcw className="h-4 w-4" /></Button>}
+          {demoMode && view === "workspace" && <Button variant="ghost" size="sm" onClick={resetDemo} aria-label="Reset demo data" title="Reset demo data"><RotateCcw className="h-4 w-4" /></Button>}
           <ThemeToggle />
+          {env?.demoTools && (
+            <div role="group" aria-label="Application mode" className="inline-flex rounded-md border border-white/10 bg-ink-950/50 p-0.5 text-[10px] font-medium">
+              {([["demo", "Demo", "Demo mode: sponsor tooling and sample scenarios"], ["user", "User", "End-user mode: plain product view"]] as const).map(([key, label, hint]) => (
+                <button
+                  key={key}
+                  title={hint}
+                  aria-pressed={(demoMode ? "demo" : "user") === key}
+                  onClick={() => changeMode(key)}
+                  className={cn("rounded px-2 py-0.5 transition duration-200", (demoMode ? "demo" : "user") === key ? "bg-white/15 text-white" : "text-slate-500 hover:text-white")}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </header>
 
-      <Scene name="hero">
-        <Hero held={kpis.held} released={kpis.released} onNewProject={() => setShowNew(true)} />
-      </Scene>
+      {view === "home" && (
+        <Scene name="hero">
+          <Hero held={kpis.held} released={kpis.released} onOpenWorkspace={() => openView("workspace")} onNewProject={() => setShowNew(true)} />
+        </Scene>
+      )}
 
       {env?.simulationMode && (
         <Banner tone="info">
@@ -305,6 +364,7 @@ export function CommandCenter() {
       )}
       {loadError && <Banner tone="error">{loadError}</Banner>}
 
+      {view === "workspace" && (<>
       <Scene name="metrics" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Reveal delay={0}><Kpi icon={<BadgeDollarSign className="h-5 w-5" />} label="Total Contract Value" amount={kpis.contractValue} hint={bundle?.project.title ?? ""} tone="blue" /></Reveal>
         <Reveal delay={90}><Kpi icon={<Lock className="h-5 w-5" />} label="Held in PayPal Escrow (Authorized)" amount={kpis.held} hint="Authorized, not captured" tone="sky" /></Reveal>
@@ -364,9 +424,9 @@ export function CommandCenter() {
             onAmountEdit={editAmount}
           />
         ) : tab === "timeline" ? (
-          <TimelineView items={items} selectedId={selectedId} onSelect={setSelectedId} onInspect={(id) => { setSelectedId(id); setInspectId(id); }} onFund={(i) => setFundId(i.id)} onAudit={(i) => setAudit({ id: i.id })} onReceipt={(i) => setReceiptId(i.id)} />
+          <TimelineView items={items} projectTitle={bundle?.project.title} selectedId={selectedId} onSelect={setSelectedId} onInspect={(id) => { setSelectedId(id); setInspectId(id); }} onFund={(i) => setFundId(i.id)} onAudit={(i) => setAudit({ id: i.id })} onReceipt={(i) => setReceiptId(i.id)} onReschedule={reschedule} />
         ) : tab === "market" ? (
-          <MarketplaceTab items={items} busyIds={busyIds} onApprove={approveProduct} onResource={resource} />
+          <MarketplaceTab items={items} busyIds={busyIds} onApprove={approveProduct} onResource={resource} onSimilar={findSimilar} onAddLink={addProductLink} />
         ) : demoMode ? (
           <TelemetryTab calls={calls} auditLog={bundle.auditLog} />
         ) : (
@@ -378,6 +438,7 @@ export function CommandCenter() {
         )}
       </main>
       </Scene>
+      </>)}
 
       {showNew && (
         <NewProjectModal

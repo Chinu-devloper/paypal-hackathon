@@ -27,6 +27,31 @@ export interface PayPalRefs {
   refundId?: string;
 }
 
+export interface ProductOfferInfo {
+  merchant: string;
+  price: number;
+  compareAt: number | null;
+  inStock: boolean;
+  url: string;
+}
+
+/** Where today's price sits against the product's own 90-day history (Channel3 price tracking). */
+export interface PriceInsight {
+  status: "low" | "typical" | "high";
+  mean: number;
+  min: number;
+  max: number;
+  current: number;
+  days: number;
+  points: Array<{ t: string; price: number }>;
+}
+
+/** Explainable ranking from the procurement agent: every point of the score has a stated reason. */
+export interface ProductPick {
+  score: number;
+  reasons: string[];
+}
+
 export interface Product {
   id: string;
   title: string;
@@ -38,6 +63,21 @@ export interface Product {
   rating: number | null;
   inStock: boolean;
   source: "channel3" | "fallback";
+  ratingCount?: number | null;
+  brand?: string | null;
+  description?: string | null;
+  features?: string[];
+  /** Every merchant selling it, cheapest first. */
+  offers?: ProductOfferInfo[];
+  compareAtPrice?: number | null;
+  priceInsight?: PriceInsight | null;
+  pick?: ProductPick | null;
+}
+
+export interface ProductRecommendation {
+  productId: string;
+  summary: string;
+  engine: "openai" | "rules";
 }
 
 /** A verbatim quote from a submitted file that backs a scoring decision. */
@@ -136,6 +176,10 @@ export interface LedgerItem {
   reason: string | null;
   candidates: Product[];
   product: Product | null;
+  recommendation?: ProductRecommendation | null;
+  /** The dates the AI originally planned, kept so schedule slippage can be shown as a baseline. */
+  plannedStartDate?: string;
+  plannedEndDate?: string;
   /** Demo hook: simulated live price after a Channel3 price spike. */
   livePriceOverride: number | null;
 }

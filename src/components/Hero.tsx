@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, BadgeCheck, Lock, Send, Sparkles } from "lucide-react";
+import { ArrowRight, BadgeCheck, Lock, Send, Sparkles } from "lucide-react";
 import { Button } from "./ui";
 import { fmtMoney } from "@/client/helpers";
 import { useCountUp } from "./motion";
@@ -11,21 +11,14 @@ const STEPS = [
   { icon: Send, title: "Release", text: "Only a passing audit captures funds and triggers the payout." },
 ];
 
-export function Hero({ held, released, onNewProject }: { held: number; released: number; onNewProject: () => void }) {
+export function Hero({ held, released, onOpenWorkspace, onNewProject }: { held: number; released: number; onOpenWorkspace: () => void; onNewProject: () => void }) {
   const heldShown = useCountUp(held);
   const releasedShown = useCountUp(released);
 
   return (
-    <div className="grid items-center gap-10 py-10 lg:min-h-[62vh] lg:grid-cols-[1.1fr_0.9fr] lg:py-6">
+    <div className="grid items-center gap-10 py-10 lg:min-h-[calc(100vh-9rem)] lg:grid-cols-[1.1fr_0.9fr] lg:py-6">
       <div className="animate-fade-up">
-        <span className="glass inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-medium text-slate-200">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping-slow rounded-full bg-emerald-400/70" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-          </span>
-          PayPal Orders v2 + Payouts, verified by AI
-        </span>
-        <h1 className="mt-5 text-4xl font-semibold leading-[1.05] tracking-tight text-white sm:text-6xl">
+        <h1 className="text-4xl font-semibold leading-[1.05] tracking-tight text-white sm:text-6xl">
           Pay for proof,
           <br />
           <span className="text-gradient animate-gradient-x">not promises.</span>
@@ -34,8 +27,8 @@ export function Hero({ held, released, onNewProject }: { held: number; released:
           Break any project into milestones, hold the money in escrow, and let the AI auditor release each payment only when the work passes.
         </p>
         <div className="mt-7 flex flex-wrap items-center gap-3">
-          <Button size="md" className="px-5" onClick={() => document.getElementById("workspace")?.scrollIntoView({ behavior: "smooth" })}>
-            Open workspace <ArrowDown className="h-4 w-4" />
+          <Button size="md" className="px-5" onClick={onOpenWorkspace}>
+            Open workspace <ArrowRight className="h-4 w-4" />
           </Button>
           <Button variant="outline" size="md" className="px-5" onClick={onNewProject}>
             <Sparkles className="h-4 w-4" /> New project

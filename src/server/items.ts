@@ -1,10 +1,11 @@
 import type { LedgerItem, ScopePlan } from "../shared/types";
-import { searchFallback } from "./channel3";
+import { rankProducts, searchFallback } from "./channel3";
+import { rulesRecommendation } from "./procurement";
 import { newId } from "./utils";
 
 export function blankItem(overrides: Partial<LedgerItem> & Pick<LedgerItem, "id" | "projectId" | "kind" | "title" | "payee" | "amount">): LedgerItem {
   const today = new Date().toISOString().slice(0, 10);
-  return {
+  const item: LedgerItem = {
     sortOrder: 0,
     startDate: today,
     endDate: today,
@@ -30,6 +31,13 @@ export function blankItem(overrides: Partial<LedgerItem> & Pick<LedgerItem, "id"
     livePriceOverride: null,
     ...overrides,
   };
+  item.plannedStartDate ??= item.startDate;
+  item.plannedEndDate ??= item.endDate;
+  if (item.candidates.length > 0 && !item.candidates[0].pick) {
+    item.candidates = rankProducts(item.candidates, item.maxBudget);
+    item.recommendation ??= rulesRecommendation(item, item.candidates);
+  }
+  return item;
 }
 
 /** Converts an AI scope plan into ledger rows (milestones first, then procurement). */

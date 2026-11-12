@@ -1,4 +1,5 @@
 import type { ItemStatus, LedgerItem } from "@/shared/types";
+import { RESCHEDULABLE } from "@/shared/schedule";
 
 export const PAYOUT_TASK_ID = "__final_payout";
 export const unlockTaskId = (itemId: string) => `${itemId}__unlock`;
@@ -18,6 +19,10 @@ export interface GanttTaskData {
   /** PayPal authorization expiry, shown as a Bryntum deadline indicator. */
   deadlineDate?: string;
   showInTimeline?: boolean;
+  /** Funded milestones are locked; only unfunded ones can be dragged or resized. */
+  readOnly: boolean;
+  /** The dates the AI originally planned (exclusive end), rendered as a Bryntum baseline. */
+  baselines?: Array<{ startDate: string; endDate: string }>;
 }
 
 export interface GanttDependencyData {
@@ -65,6 +70,11 @@ export function toGanttData(items: LedgerItem[]): GanttData {
       kind: item.kind,
       deadlineDate,
       showInTimeline: true,
+      readOnly: !RESCHEDULABLE.includes(item.status),
+      baselines:
+        item.plannedStartDate && item.plannedEndDate
+          ? [{ startDate: item.plannedStartDate, endDate: addDays(item.plannedEndDate, 1) }]
+          : undefined,
     });
     const unlockId = unlockTaskId(item.id);
     tasksData.push({
@@ -78,6 +88,7 @@ export function toGanttData(items: LedgerItem[]): GanttData {
       cost: item.amount,
       status: "UNLOCK",
       kind: "UNLOCK",
+      readOnly: true,
     });
     dependenciesData.push({ id: `${item.id}->${unlockId}`, from: item.id, to: unlockId, type: 2 });
     for (const dep of item.dependencies) dependenciesData.push({ id: `${dep}->${item.id}`, from: dep, to: item.id, type: 2 });
@@ -99,6 +110,7 @@ export function toGanttData(items: LedgerItem[]): GanttData {
     status: "UNLOCK",
     kind: "PAYOUT",
     showInTimeline: true,
+    readOnly: true,
   });
   for (const item of items) {
     if (!hasDependents.has(item.id)) {

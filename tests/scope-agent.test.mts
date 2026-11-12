@@ -2,6 +2,19 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 const { lintPlan, planWithAgent } = await import("../src/server/ai/scope-agent");
+const { describeLlmError } = await import("../src/server/ai/llm");
+
+describe("model error messages", () => {
+  it("never repeats provider text, which can contain pieces of the API key", () => {
+    const leaky = Object.assign(new Error("401 Incorrect API key provided: AIzaSyAx****WZcl. You can find your API key at https://platform.openai.com"), { status: 401 });
+    const text = describeLlmError(leaky);
+    assert.doesNotMatch(text, /AIza|platform\.openai|WZcl/);
+    assert.match(text, /OPENAI_API_KEY/);
+    assert.match(describeLlmError(Object.assign(new Error("x"), { status: 503 })), /busy/);
+    assert.match(describeLlmError(Object.assign(new Error("x"), { status: 404 })), /OPENAI_MODEL/);
+    assert.match(describeLlmError(new Error("Request timed out.")), /too long/);
+  });
+});
 
 type Plan = Parameters<typeof lintPlan>[0];
 

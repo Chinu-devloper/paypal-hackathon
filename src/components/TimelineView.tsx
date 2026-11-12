@@ -8,12 +8,14 @@ import type { LedgerItem } from "@/shared/types";
 
 interface Props {
   items: LedgerItem[];
+  projectTitle?: string;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onInspect: (id: string) => void;
   onFund: (item: LedgerItem) => void;
   onAudit: (item: LedgerItem) => void;
   onReceipt: (item: LedgerItem) => void;
+  onReschedule: (itemId: string, startDate: string, endDate: string) => Promise<boolean>;
 }
 
 const BryntumTimeline = dynamic(() => import("./BryntumTimeline"), {
@@ -50,7 +52,7 @@ export function TimelineView(props: Props) {
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs text-slate-400">
-        Bryntum Gantt: milestone schedule, finish-to-start dependencies, PayPal payment-unlock milestones and authorization-expiry deadlines. Click a task to inspect it, or right-click it to fund escrow, run the AI audit or open the receipt.
+        Bryntum Gantt: milestone schedule, finish-to-start dependencies, PayPal payment-unlock milestones, authorization-expiry deadlines and AI-plan baselines. Drag or resize an unfunded milestone to re-plan it (saved, validated against dependencies, undoable); funded milestones are locked. Right-click a task to fund escrow, run the AI audit or open the receipt.
       </p>
       <Boundary onFail={fail}>
         <BryntumTimeline {...props} onError={fail} />

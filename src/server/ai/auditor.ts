@@ -4,7 +4,7 @@ import { APPROVAL_THRESHOLD, SETTLEMENT_FLOOR, type AuditRecord, type CriterionR
 import { newId, round2 } from "../utils";
 import { evaluateCriterionDemo, type CriterionEvaluation } from "./demo-engine";
 import { scanForPromptInjection } from "./injection";
-import { llmClient, llmModel } from "./llm";
+import { describeLlmError, llmClient, llmModel } from "./llm";
 
 export const MAX_SUBMISSION_CHARS = 60_000;
 const LLM_SUBMISSION_CHARS = 24_000;
@@ -140,7 +140,7 @@ export async function runAudit(input: AuditInput, emit: AuditEmitter = () => {})
       evaluations = await evaluateWithOpenAI({ ...input, submission });
       engine = "openai";
     } catch (err) {
-      await emit(`[AI AUDITOR] LLM unavailable (${(err as Error).message.slice(0, 120)}); falling back to deterministic demo engine.`);
+      await emit(`[AI AUDITOR] The AI model is unavailable (${describeLlmError(err)}); falling back to deterministic demo engine.`);
       evaluations = input.criteria.map((c) => evaluateCriterionDemo(c, submission));
     }
   } else {

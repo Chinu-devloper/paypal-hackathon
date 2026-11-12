@@ -3,6 +3,7 @@ import { getEnvStatus } from "../env";
 import type { ScopeInsight, ScopePlan } from "../../shared/types";
 import { addDays, isoDate, round2 } from "../utils";
 import { planWithAgent } from "./scope-agent";
+import { describeLlmError } from "./llm";
 
 export const MAX_PROMPT_CHARS = 4000;
 export const MIN_BUDGET = 20;
@@ -304,7 +305,7 @@ export async function generateScope(req: ScopeRequest): Promise<ScopeResult> {
       const { plan, insight } = await planWithAgent(req);
       return { plan: normalizePlan(planSchema.parse(plan) as ScopePlan, req.totalBudget), engine: "openai", insight };
     } catch (err) {
-      const note = `The AI model was unavailable (${(err as Error).message.replace(/\s+/g, " ").slice(0, 100)}), so the rule-based planner was used.`;
+      const note = `The AI model was unavailable (${describeLlmError(err)}), so the rule-based planner was used.`;
       return { plan: normalizePlan(buildDemoPlan(req), req.totalBudget), engine: "demo-engine", note, insight: templateInsight(note) };
     }
   }
