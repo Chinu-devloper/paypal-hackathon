@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getEnvStatus } from "../env";
-import { APPROVAL_THRESHOLD, SETTLEMENT_FLOOR, type AuditRecord, type CriterionResult } from "../../shared/types";
+import { APPROVAL_THRESHOLD, SETTLEMENT_FLOOR, type AuditRecord, type CriterionResult, type IntegrityFlag, type SourceSummary } from "../../shared/types";
 import { newId, round2 } from "../utils";
 import { evaluateCriterionDemo, type CriterionEvaluation } from "./demo-engine";
 import { scanForPromptInjection } from "./injection";
@@ -76,6 +76,8 @@ export function buildRecord(params: {
   injectionFindings: string[];
   submission: string;
   amount: number;
+  source?: SourceSummary;
+  integrity?: IntegrityFlag[];
 }): AuditRecord {
   const { score, verdict, amount } = params;
   const settlementOffer =
@@ -98,6 +100,8 @@ export function buildRecord(params: {
     engine: params.engine,
     injectionFindings: params.injectionFindings,
     submissionPreview: params.submission.slice(0, 280),
+    ...(params.source ? { source: params.source } : {}),
+    ...(params.integrity?.length ? { integrity: params.integrity } : {}),
   };
 }
 

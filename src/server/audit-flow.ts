@@ -1,5 +1,8 @@
 import { MAX_SUBMISSION_CHARS, runAudit } from "./ai/auditor";
+import { runRepoAudit } from "./ai/repo-auditor";
 import { PaymentError } from "./errors";
+import { ingestRepository, ingestUploadedFiles } from "./ingest";
+import type { SourceBundle } from "./ingest/bundle";
 import { authorizationAgeDays, releaseFunds, type Emitter } from "./payments";
 import { addAuditLog, getItem, getProject, updateItem } from "./repo";
 import { AUTH_EXPIRY_DAYS, type AuditRecord, type LedgerItem } from "../shared/types";
@@ -24,10 +27,20 @@ function mutateIfOpen(itemId: string, fn: (item: LedgerItem) => void): LedgerIte
   });
 }
 
-export async function auditAndRelease(itemId: string, submission: string, emit: Emitter): Promise<AuditFlowResult> {
-  const text = submission.trim();
-  if (!text) throw new PaymentError("VALIDATION", "Submission is empty", 422);
-  if (text.length > MAX_SUBMISSION_CHARS) throw new PaymentError("VALIDATION", `Submission exceeds ${MAX_SUBMISSION_CHARS} characters`, 413);
+export type SubmissionInput =
+  | { kind: "text"; text: string }
+  | { kind: "git"; url: string }
+  | { kind: "files"; files: Array<{ path: string; content: string }>; label?: string };
+
+export async function auditAndRelease(itemId: string, submission: SubmissionInput | string, emit: Emitter): Promise<AuditFlowResult> {
+  const input: SubmissionInput = typeof submission === "string" ? { kind: "text", text: submission } : submission;
+  const text = input.kind === "text" ? input.text.trim() : "";
+  if (input.kind === "text") {
+    if (!text) throw new PaymentError("VALIDATION", "Submission is empty", 422);
+    if (text.length > MAX_SUBMISSION_CHARS) throw new PaymentError("VALIDATION", `Submission exceeds ${MAX_SUBMISSION_CHARS} characters`, 413);
+  } else if (input.kind === "files" && input.files.length === 0) {
+    throw new PaymentError("VALIDATION", "No files were uploaded", 422);
+  }
 
   const item = getItem(itemId);
   if (!item) throw new PaymentError("NOT_FOUND", "Item not found", 404);
@@ -43,16 +56,26 @@ export async function auditAndRelease(itemId: string, submission: string, emit: 
     throw new PaymentError("AUTH_EXPIRED", "The PayPal authorization has expired. Re-authorize before auditing.", 409);
   }
 
+  // Ingest before touching the item so a bad link or oversized upload leaves the escrow state unchanged.
+  let bundle: SourceBundle | null = null;
+  if (input.kind === "git") bundle = await ingestRepository(input.url, emit);
+  else if (input.kind === "files") bundle = ingestUploadedFiles(input.files, input.label?.slice(0, 80) || "uploaded folder");
+
   mutateIfOpen(itemId, (it) => {
     it.status = "AI_AUDITING";
     it.paymentError = null;
   });
-  addAuditLog(project.id, itemId, "INFO", "AUDIT_STARTED", `Deliverable submitted for "${item.title}" (${text.length} chars).`);
-
-  const record = await runAudit(
-    { milestoneTitle: item.title, amount: item.amount, criteria: item.acceptanceCriteria, submission: text },
-    emit,
+  addAuditLog(
+    project.id,
+    itemId,
+    "INFO",
+    "AUDIT_STARTED",
+    bundle ? `Source submitted for "${item.title}": ${bundle.origin.label} (${bundle.files.length} readable files).` : `Deliverable submitted for "${item.title}" (${text.length} chars).`,
   );
+
+  const record = bundle
+    ? await runRepoAudit({ milestoneTitle: item.title, amount: item.amount, criteria: item.acceptanceCriteria, milestoneStart: item.startDate, bundle }, emit)
+    : await runAudit({ milestoneTitle: item.title, amount: item.amount, criteria: item.acceptanceCriteria, submission: text }, emit);
 
   if (record.verdict === "SECURITY_FLAGGED") {
     const updated = mutateIfOpen(itemId, (it) => {

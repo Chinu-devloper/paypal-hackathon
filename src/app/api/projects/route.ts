@@ -23,7 +23,7 @@ export async function GET() {
 export async function POST(req: Request) {
   return handle(async () => {
     const body = await readBody(req, createSchema);
-    const { plan, engine, note } = await generateScope({ prompt: body.prompt, totalBudget: body.totalBudget ?? null });
+    const { plan, engine, note, insight } = await generateScope({ prompt: body.prompt, totalBudget: body.totalBudget ?? null });
 
     const project: Project = {
       id: newId("prj"),
@@ -34,6 +34,7 @@ export async function POST(req: Request) {
       clientEmail: body.clientEmail,
       freelancerEmail: body.freelancerEmail,
       createdAt: new Date().toISOString(),
+      scope: insight,
     };
     const items = itemsFromPlan(project.id, plan, body.freelancerEmail);
     for (const item of items) {

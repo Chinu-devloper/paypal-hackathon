@@ -1,14 +1,30 @@
 "use client";
 
-import { CheckCircle2, FileCode2, ShieldAlert, Terminal, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileArchive, FileCode2, FolderUp, GitBranch, ShieldAlert, Terminal, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Banner, Button, Modal, Pill, ScoreBar } from "./ui";
 import { api, ApiError, fmtMoney } from "@/client/helpers";
+import { readFolder, readZip, type PickedSource } from "@/client/readSource";
 import { buildSampleSubmissions } from "@/shared/samples";
-import { APPROVAL_THRESHOLD, type AuditRecord, type LedgerItem } from "@/shared/types";
+import { APPROVAL_THRESHOLD, type AuditRecord, type IntegrityFlag, type LedgerItem } from "@/shared/types";
 import { cn } from "@/shared/cn";
 
 export type SampleKind = "passing" | "failing" | "partial" | "injection";
+
+type SourceMode = "text" | "repo" | "upload";
+
+const MODES: Array<{ key: SourceMode; label: string; icon: typeof FileCode2 }> = [
+  { key: "repo", label: "Git link", icon: GitBranch },
+  { key: "upload", label: "Upload folder or zip", icon: FolderUp },
+  { key: "text", label: "Paste text", icon: FileCode2 },
+];
+
+const FLAG_STYLE: Record<IntegrityFlag["severity"], string> = {
+  info: "text-slate-400",
+  warn: "text-amber-300",
+  review: "text-orange-300",
+  block: "text-red-300",
+};
 
 interface TermLine {
   id: number;
@@ -29,6 +45,12 @@ function lineClass(text: string): string {
   if (text.startsWith("[SECURITY SCANNER] MATCH")) return "text-red-300";
   if (text.startsWith("[SECURITY SCANNER]")) return "text-cyan-300";
   if (text.startsWith("[CRITERION")) return text.includes(": PASS") ? "text-emerald-300" : "text-amber-300";
+  if (text.startsWith("[INGEST]") || text.startsWith("[INVENTORY]") || text.startsWith("[PLAN]") || text.startsWith("[RETRIEVE]") || text.startsWith("[FORENSICS]")) return "text-cyan-300";
+  if (text.startsWith("[AGENT]")) return "text-violet-300";
+  if (text.startsWith("[EVIDENCE]")) return "pl-4 text-slate-400";
+  if (text.startsWith("[INTEGRITY] OK") || text.startsWith("[INTEGRITY] INFO")) return "text-slate-400";
+  if (text.startsWith("[INTEGRITY] BLOCK")) return "font-semibold text-red-300";
+  if (text.startsWith("[INTEGRITY]")) return "font-semibold text-orange-300";
   if (text.startsWith("[APIMATIC SDK]")) return "text-sky-300";
   if (text.startsWith("[REVISION")) return "text-amber-200";
   if (text.startsWith("[SETTLEMENT]") || text.startsWith("[PAYPAL]")) return "text-violet-300";
@@ -40,6 +62,10 @@ export function AuditorModal({ item: initialItem, demoMode, onClose, onChanged }
   const samples = useMemo(() => buildSampleSubmissions(initialItem.acceptanceCriteria), [initialItem.acceptanceCriteria]);
   const [item, setItem] = useState(initialItem);
   const [submission, setSubmission] = useState("");
+  const [mode, setMode] = useState<SourceMode>("repo");
+  const [repoUrl, setRepoUrl] = useState("");
+  const [picked, setPicked] = useState<PickedSource | null>(null);
+  const [reading, setReading] = useState(false);
   const [loadingSample, setLoadingSample] = useState(false);
   const [lines, setLines] = useState<TermLine[]>([]);
   const [running, setRunning] = useState(false);
@@ -56,6 +82,7 @@ export function AuditorModal({ item: initialItem, demoMode, onClose, onChanged }
   const push = (text: string) => setLines((prev) => [...prev, { id: lineId.current++, text }]);
 
   async function loadSample(kind: SampleKind) {
+    setMode("text");
     if (kind === "failing" || kind === "injection") return setSubmission(samples[kind]);
     setLoadingSample(true);
     try {
@@ -68,16 +95,37 @@ export function AuditorModal({ item: initialItem, demoMode, onClose, onChanged }
     }
   }
 
+  async function pick(read: () => Promise<PickedSource>) {
+    setReading(true);
+    setError(null);
+    try {
+      const result = await read();
+      if (result.files.length === 0) throw new Error("No readable source files were found. Folders like node_modules, images and lockfiles are skipped.");
+      setPicked(result);
+    } catch (err) {
+      setPicked(null);
+      setError(err instanceof Error ? err.message : "Could not read that upload");
+    } finally {
+      setReading(false);
+    }
+  }
+
+  const ready = mode === "text" ? submission.trim().length > 0 : mode === "repo" ? repoUrl.trim().length > 0 : picked !== null;
+
   async function run() {
     setRunning(true);
     setError(null);
     setRecord(null);
     setLines([]);
     try {
+      const payload =
+        mode === "repo" ? { itemId: item.id, repoUrl: repoUrl.trim() }
+        : mode === "upload" && picked ? { itemId: item.id, files: picked.files, label: picked.label }
+        : { itemId: item.id, submission };
       const res = await fetch("/api/audit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemId: item.id, submission }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok || !res.body) {
         const data = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
@@ -147,10 +195,24 @@ export function AuditorModal({ item: initialItem, demoMode, onClose, onChanged }
               {item.acceptanceCriteria.map((c, i) => {
                 const r = record?.criteria[i];
                 return (
-                  <li key={c} className="flex items-start gap-2 rounded-md border border-ink-600/50 bg-ink-800/60 px-3 py-2 text-xs text-slate-200">
-                    {r ? (r.pass ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />) : <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full border border-slate-500" />}
-                    <span className="flex-1">{c}</span>
-                    {r && <span className={cn("font-semibold tabular-nums", r.pass ? "text-emerald-300" : "text-red-300")}>{r.score}%</span>}
+                  <li key={c} className="rounded-md border border-ink-600/50 bg-ink-800/60 px-3 py-2 text-xs text-slate-200">
+                    <div className="flex items-start gap-2">
+                      {r ? (r.pass ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />) : <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full border border-slate-500" />}
+                      <span className="flex-1">{c}</span>
+                      {r && <span className={cn("font-semibold tabular-nums", r.pass ? "text-emerald-300" : "text-red-300")}>{r.score}%</span>}
+                    </div>
+                    {r && (r.citations?.length ?? 0) > 0 && (
+                      <details className="mt-1.5 pl-6">
+                        <summary className="cursor-pointer text-[11px] text-sky-300 hover:underline">{r.citations?.length} verified code citation(s)</summary>
+                        <ul className="mt-1 space-y-1">
+                          {r.citations?.map((cit) => (
+                            <li key={`${cit.file}:${cit.line}`} className="font-mono text-[10px] leading-snug text-slate-400">
+                              <span className="text-slate-300">{cit.file}:{cit.line}</span> <code className="break-all">{cit.quote}</code>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
                   </li>
                 );
               })}
@@ -171,21 +233,96 @@ export function AuditorModal({ item: initialItem, demoMode, onClose, onChanged }
             </div>
           )}
 
-          <label className="flex flex-1 flex-col text-xs font-semibold uppercase tracking-wider text-slate-400">
-            <span className="mb-2 flex items-center gap-1.5"><FileCode2 className="h-3.5 w-3.5" aria-hidden /> Deliverable (code, text, markdown or URL)</span>
-            <textarea
-              value={submission}
-              onChange={(e) => setSubmission(e.target.value)}
-              disabled={running || locked}
-              rows={12}
-              spellCheck={false}
-              placeholder={demoMode ? "Paste the freelancer's deliverable here, or load a test submission above." : "Paste the freelancer's deliverable here (code, text, markdown or a link)."}
-              className="min-h-[220px] w-full flex-1 rounded-md border border-ink-600 bg-ink-950/50 p-3 font-mono text-xs normal-case tracking-normal text-slate-200 focus:border-pp-blue focus:outline-none disabled:opacity-60"
-            />
-          </label>
+          <div className="flex flex-1 flex-col">
+            <div role="tablist" aria-label="How the work is submitted" className="mb-2 flex flex-wrap gap-1 rounded-lg border border-ink-600/60 bg-ink-950/40 p-1">
+              {MODES.map((m) => (
+                <button
+                  key={m.key}
+                  role="tab"
+                  aria-selected={mode === m.key}
+                  disabled={running || locked}
+                  onClick={() => setMode(m.key)}
+                  className={cn("flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition", mode === m.key ? "bg-pp-blue/20 text-sky-300 ring-1 ring-inset ring-pp-sky/40" : "text-slate-400 hover:text-white")}
+                >
+                  <m.icon className="h-3.5 w-3.5" aria-hidden /> {m.label}
+                </button>
+              ))}
+            </div>
 
-          <Button onClick={run} loading={running} disabled={submission.trim().length === 0 || locked}>
-            Submit Deliverable for AI Escrow Audit
+            {mode === "text" && (
+              <textarea
+                value={submission}
+                onChange={(e) => setSubmission(e.target.value)}
+                disabled={running || locked}
+                rows={12}
+                spellCheck={false}
+                aria-label="Deliverable text"
+                placeholder={demoMode ? "Paste the freelancer's deliverable here, or load a test submission above." : "Paste the freelancer's deliverable here (code, text, markdown or a link)."}
+                className="min-h-[220px] w-full flex-1 rounded-md border border-ink-600 bg-ink-950/50 p-3 font-mono text-xs normal-case tracking-normal text-slate-200 focus:border-pp-blue focus:outline-none disabled:opacity-60"
+              />
+            )}
+
+            {mode === "repo" && (
+              <div className="flex min-h-[220px] flex-1 flex-col gap-3 rounded-md border border-ink-600 bg-ink-950/30 p-4">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-400" htmlFor="repo-url">Public repository link</label>
+                <input
+                  id="repo-url"
+                  value={repoUrl}
+                  onChange={(e) => setRepoUrl(e.target.value)}
+                  disabled={running || locked}
+                  placeholder="https://github.com/owner/repository"
+                  spellCheck={false}
+                  className="w-full rounded-md border border-ink-600 bg-ink-950/50 px-3 py-2 font-mono text-xs text-slate-200 focus:border-pp-blue focus:outline-none disabled:opacity-60"
+                />
+                <p className="text-xs leading-relaxed text-slate-400">
+                  GitHub, GitLab or Bitbucket. The agent downloads the code, reads it, checks the commit history against this milestone&apos;s dates, and only counts what is actually implemented.
+                  Private repositories cannot be read; upload the folder instead. Add <code className="font-mono">/tree/branch</code> to audit a branch.
+                </p>
+              </div>
+            )}
+
+            {mode === "upload" && (
+              <div className="flex min-h-[220px] flex-1 flex-col gap-3 rounded-md border border-dashed border-ink-600 bg-ink-950/30 p-4">
+                <div className="flex flex-wrap gap-2">
+                  <label className={cn("inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-ink-600 bg-ink-800/70 px-3 py-2 text-xs font-medium text-slate-200 transition hover:border-pp-sky/50", (running || locked || reading) && "pointer-events-none opacity-60")}>
+                    <FolderUp className="h-4 w-4" aria-hidden /> Choose folder
+                    <input
+                      type="file"
+                      className="sr-only"
+                      // @ts-expect-error webkitdirectory is supported by all current browsers but missing from the DOM typings
+                      webkitdirectory=""
+                      multiple
+                      onChange={(e) => e.target.files && e.target.files.length > 0 && void pick(() => readFolder(e.target.files as FileList))}
+                    />
+                  </label>
+                  <label className={cn("inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-ink-600 bg-ink-800/70 px-3 py-2 text-xs font-medium text-slate-200 transition hover:border-pp-sky/50", (running || locked || reading) && "pointer-events-none opacity-60")}>
+                    <FileArchive className="h-4 w-4" aria-hidden /> Choose .zip
+                    <input
+                      type="file"
+                      accept=".zip,application/zip"
+                      className="sr-only"
+                      onChange={(e) => e.target.files?.[0] && void pick(() => readZip(e.target.files![0] as File))}
+                    />
+                  </label>
+                  {reading && <span className="self-center text-xs text-slate-400">Reading files...</span>}
+                </div>
+                {picked ? (
+                  <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200">
+                    <b>{picked.label}</b>: {picked.files.length} source files ({Math.max(1, Math.round(picked.bytes / 1024))} KB) ready to audit.
+                    {picked.skipped > 0 && <span className="text-emerald-300/80"> {picked.skipped} skipped (dependencies, images, lockfiles, oversized files).</span>}
+                  </div>
+                ) : (
+                  <p className="text-xs leading-relaxed text-slate-400">
+                    Pick the project folder or a .zip of it. Files are read in your browser and only source text is sent; node_modules, build output, images and lockfiles are left out.
+                    Make sure the README and any tests are included.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <Button onClick={run} loading={running} disabled={!ready || locked || reading}>
+            {mode === "text" ? "Submit Deliverable for AI Escrow Audit" : "Analyze Source & Run AI Escrow Audit"}
           </Button>
           {locked && <Banner tone="success">This milestone is already settled; no further audits are possible.</Banner>}
         </div>
@@ -213,6 +350,25 @@ export function AuditorModal({ item: initialItem, demoMode, onClose, onChanged }
                 <span className="text-[11px] text-slate-400">engine: {record.engine} - threshold {APPROVAL_THRESHOLD}</span>
               </div>
               <ScoreBar score={record.score} />
+              {record.source && (
+                <p className="mt-3 text-[11px] text-slate-400">
+                  Analyzed <b className="text-slate-200">{record.source.label}</b>: {record.source.sourceFiles} source files, {record.source.codeLines} lines of code, {record.source.testFiles} test file(s)
+                  {record.source.languages.length > 0 && ` (${record.source.languages.map((l) => l.name).join(", ")})`}
+                  {record.source.commits !== null && `, ${record.source.commits} commit(s) checked`}.
+                </p>
+              )}
+              {record.integrity && record.integrity.filter((f) => f.severity !== "info").length > 0 && (
+                <div className="mt-3 rounded-md border border-ink-600/60 bg-ink-950/30 p-2.5">
+                  <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400"><AlertTriangle className="h-3.5 w-3.5" aria-hidden /> Integrity checks</div>
+                  <ul className="space-y-1">
+                    {record.integrity.filter((f) => f.severity !== "info").map((f) => (
+                      <li key={f.id} className={cn("text-xs leading-snug", FLAG_STYLE[f.severity])}>
+                        <b className="mr-1 uppercase">{f.severity}</b>{f.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {record.revisionChecklist.length > 0 && (
                 <ol className="mt-3 list-decimal space-y-1 pl-4 text-xs text-slate-200">
                   {record.revisionChecklist.map((r) => <li key={r}>{r}</li>)}

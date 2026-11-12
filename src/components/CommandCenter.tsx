@@ -13,6 +13,7 @@ import { TimelineView } from "./TimelineView";
 import { NewProjectModal } from "./NewProjectModal";
 import { EnvInfoModal, InspectorDrawer, ReceiptModal } from "./Panels";
 import { EscrowFlow } from "./EscrowFlow";
+import { ScopeInsightCard } from "./ScopeInsightCard";
 import { AuditTrail, TelemetryPanel, TelemetryTab } from "./TelemetryTab";
 import { Banner, Button, Card, Drawer, Toasts, type Toast } from "./ui";
 import { api, ApiError, computeKpis, fmtMoney } from "@/client/helpers";
@@ -315,6 +316,7 @@ export function CommandCenter() {
       {bundle && (
         <Reveal>
           <EscrowFlow items={items} onFund={(i) => setFundId(i.id)} onAudit={(i) => setAudit({ id: i.id })} onChooseProduct={() => setTab("market")} onPurchase={(i) => void purchaseOrRetry(i)} />
+          {bundle.project.scope && <div className="mt-4"><ScopeInsightCard key={bundle.project.id} insight={bundle.project.scope} /></div>}
         </Reveal>
       )}
       <nav ref={navRef} className="relative flex gap-1 overflow-x-auto border-b border-white/10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Workspace">

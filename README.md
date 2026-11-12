@@ -64,9 +64,11 @@ For live PayPal sandbox payouts, enable the Payouts product on the sandbox app, 
 
 ## What it does
 
-1. **AI Scope Architect** turns a plain-English brief into milestones, acceptance criteria, a schedule and an equipment stipend (strict JSON validated with zod and rebalanced so amounts always sum to the budget).
+1. **AI Scope Architect** is a small agent, not a single prompt. It first lists everything the brief asks for (and what the project needs but the client did not say, such as cart and checkout for a store), plans milestones that each cover one deliverable, then reviews its own plan with deterministic checks (every requirement covered, balanced payments, no bundled work, specific verifiable criteria) and sends it back with the exact problems if it fails. The dashboard shows what it understood and which milestone delivers each requirement. Without a model key it falls back to a rule-based planner and says so.
 2. **Escrow funding** with the official `@paypal/react-paypal-js` buttons (`intent: authorize`) or a 1-click sandbox simulation. Funds are held, not captured.
-3. **AI Deliverable Auditor** scores a submission against each acceptance criterion in a live agentic terminal.
+3. **AI Deliverable Auditor** scores a submission against each acceptance criterion in a live agentic terminal. Work can be pasted text, a public GitHub, GitLab or Bitbucket link, or an uploaded folder or `.zip`.
+   - For repositories the agent downloads the code with strict size and host limits, never executes it, and works from evidence: it retrieves the code behind each requirement, a model (when configured) judges it, and every score must be backed by quotes that exist verbatim in the named file. README claims do not count as implementation.
+   - Integrity checks catch stub functions, starter templates, copy-pasted padding, hard-coded secrets, forks with no new commits, commit history that pre-dates the milestone, and instructions aimed at the auditor hidden in docs or comments. Suspicious work is capped below the release threshold, so a human reviews it instead of the funds moving automatically.
    - Score 80 or higher: the server captures the authorization and pays out the freelancer.
    - 50 to 79: funds stay locked and a pro-rated settlement is offered (final capture of the agreed amount, remainder released to the client).
    - Below 50: funds stay locked and a line-by-line revision checklist is produced.

@@ -40,11 +40,38 @@ export interface Product {
   source: "channel3" | "fallback";
 }
 
+/** A verbatim quote from a submitted file that backs a scoring decision. */
+export interface Citation {
+  file: string;
+  line: number;
+  quote: string;
+}
+
 export interface CriterionResult {
   criterion: string;
   score: number;
   pass: boolean;
   evidence: string;
+  citations?: Citation[];
+}
+
+/** info is context; warn is suspicious; review caps the score below the release threshold; block stops the audit. */
+export interface IntegrityFlag {
+  id: string;
+  severity: "info" | "warn" | "review" | "block";
+  message: string;
+}
+
+export interface SourceSummary {
+  kind: "repository" | "upload" | "text";
+  label: string;
+  files: number;
+  sourceFiles: number;
+  codeLines: number;
+  testFiles: number;
+  languages: Array<{ name: string; lines: number }>;
+  skipped: number;
+  commits: number | null;
 }
 
 export type AuditVerdict = "APPROVED" | "REVISION_NEEDED" | "SECURITY_FLAGGED";
@@ -67,6 +94,9 @@ export interface AuditRecord {
   engine: "openai" | "demo-engine" | "security-scanner";
   injectionFindings: string[];
   submissionPreview: string;
+  /** Present for repository and folder submissions. */
+  source?: SourceSummary;
+  integrity?: IntegrityFlag[];
 }
 
 export interface Settlement {
@@ -110,6 +140,23 @@ export interface LedgerItem {
   livePriceOverride: number | null;
 }
 
+export interface ScopeRequirement {
+  text: string;
+  /** True when the client did not say it but the project cannot work without it. */
+  implied: boolean;
+  /** Titles of the milestones that deliver this requirement. */
+  milestones: string[];
+}
+
+/** How the Scope Architect understood the brief and which self-checks the plan passed. */
+export interface ScopeInsight {
+  engine: "openai" | "demo-engine";
+  summary: string;
+  requirements: ScopeRequirement[];
+  checks: string[];
+  note: string | null;
+}
+
 export interface Project {
   id: string;
   scenarioKey: string | null;
@@ -119,6 +166,7 @@ export interface Project {
   clientEmail: string;
   freelancerEmail: string;
   createdAt: string;
+  scope?: ScopeInsight;
 }
 
 export interface ProjectBundle {
