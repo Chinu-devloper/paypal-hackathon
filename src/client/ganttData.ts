@@ -15,6 +15,9 @@ export interface GanttTaskData {
   cost: number;
   status: ItemStatus | "UNLOCK";
   kind: "SERVICE" | "PROCUREMENT" | "UNLOCK" | "PAYOUT";
+  /** PayPal authorization expiry, shown as a Bryntum deadline indicator. */
+  deadlineDate?: string;
+  showInTimeline?: boolean;
 }
 
 export interface GanttDependencyData {
@@ -33,6 +36,7 @@ export interface GanttData {
 
 const DAY_MS = 86_400_000;
 const addDays = (iso: string, n: number) => new Date(new Date(`${iso}T00:00:00Z`).getTime() + n * DAY_MS).toISOString().slice(0, 10);
+const AUTH_HELD: ItemStatus[] = ["AUTHORIZED", "AI_AUDITING", "REVISION_NEEDED", "SECURITY_FLAGGED"];
 
 /**
  * Bryntum Gantt project data. Every milestone gets a zero-duration "payment unlock" milestone at its end
@@ -42,9 +46,12 @@ export function toGanttData(items: LedgerItem[]): GanttData {
   const tasksData: GanttTaskData[] = [];
   const dependenciesData: GanttDependencyData[] = [];
   const hasDependents = new Set(items.flatMap((i) => i.dependencies));
+  let lastDeadline = "";
 
   for (const item of items) {
     const done = item.status === "PAID_OUT" || item.status === "CAPTURED";
+    const deadlineDate = AUTH_HELD.includes(item.status) && item.authorizationExpiresAt ? item.authorizationExpiresAt.slice(0, 10) : undefined;
+    if (deadlineDate && deadlineDate > lastDeadline) lastDeadline = deadlineDate;
     tasksData.push({
       id: item.id,
       name: item.title,
@@ -56,6 +63,8 @@ export function toGanttData(items: LedgerItem[]): GanttData {
       cost: item.amount,
       status: item.status,
       kind: item.kind,
+      deadlineDate,
+      showInTimeline: true,
     });
     const unlockId = unlockTaskId(item.id);
     tasksData.push({
@@ -89,6 +98,7 @@ export function toGanttData(items: LedgerItem[]): GanttData {
     cost: total,
     status: "UNLOCK",
     kind: "PAYOUT",
+    showInTimeline: true,
   });
   for (const item of items) {
     if (!hasDependents.has(item.id)) {
@@ -96,5 +106,7 @@ export function toGanttData(items: LedgerItem[]): GanttData {
     }
   }
 
-  return { tasksData, dependenciesData, startDate: addDays(firstStart, -2), endDate: addDays(payoutDay, 3) };
+  const scheduleEnd = addDays(payoutDay, 3);
+  const endDate = lastDeadline && addDays(lastDeadline, 2) > scheduleEnd ? addDays(lastDeadline, 2) : scheduleEnd;
+  return { tasksData, dependenciesData, startDate: addDays(firstStart, -2), endDate };
 }

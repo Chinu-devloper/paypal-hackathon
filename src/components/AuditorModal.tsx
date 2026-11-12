@@ -180,7 +180,7 @@ export function AuditorModal({ item: initialItem, demoMode, onClose, onChanged }
               rows={12}
               spellCheck={false}
               placeholder={demoMode ? "Paste the freelancer's deliverable here, or load a test submission above." : "Paste the freelancer's deliverable here (code, text, markdown or a link)."}
-              className="min-h-[220px] w-full flex-1 rounded-md border border-ink-600 bg-black/40 p-3 font-mono text-xs normal-case tracking-normal text-slate-200 focus:border-pp-blue focus:outline-none disabled:opacity-60"
+              className="min-h-[220px] w-full flex-1 rounded-md border border-ink-600 bg-ink-950/50 p-3 font-mono text-xs normal-case tracking-normal text-slate-200 focus:border-pp-blue focus:outline-none disabled:opacity-60"
             />
           </label>
 
@@ -191,7 +191,7 @@ export function AuditorModal({ item: initialItem, demoMode, onClose, onChanged }
         </div>
 
         <div className="flex min-h-[420px] flex-col gap-3">
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-ink-600 bg-black">
+          <div className="scope-dark flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-ink-600 bg-black">
             <div className="flex items-center gap-2 border-b border-ink-600/70 bg-ink-800 px-3 py-1.5 text-[11px] text-slate-400">
               <Terminal className="h-3.5 w-3.5" aria-hidden /> Live Agentic Terminal
               {running && <span className="ml-auto animate-pulse text-violet-300">agent running...</span>}

@@ -12,6 +12,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "tsc --noEmit",
+    "theme:bryntum": "node scripts/build-bryntum-theme.mjs",
     "test": "tsx --test tests/*.test.mts"
   },
   "dependencies": {

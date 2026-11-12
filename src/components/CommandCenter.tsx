@@ -1,14 +1,18 @@
 "use client";
 
 import { Activity, BadgeDollarSign, CalendarRange, Grid3x3, Lock, RotateCcw, ShieldCheck, ShoppingBag, Sparkles, Wallet } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AuditorModal } from "./AuditorModal";
 import { EscrowLedgerGrid } from "./EscrowLedgerGrid";
 import { FundingModal } from "./FundingModal";
+import { Hero } from "./Hero";
 import { MarketplaceTab } from "./MarketplaceTab";
+import { Reveal, Scene, useCountUp, useScrolled } from "./motion";
+import { ThemeToggle } from "./ThemeToggle";
 import { TimelineView } from "./TimelineView";
 import { NewProjectModal } from "./NewProjectModal";
 import { EnvInfoModal, InspectorDrawer, ReceiptModal } from "./Panels";
+import { EscrowFlow } from "./EscrowFlow";
 import { AuditTrail, TelemetryPanel, TelemetryTab } from "./TelemetryTab";
 import { Banner, Button, Card, Drawer, Toasts, type Toast } from "./ui";
 import { api, ApiError, computeKpis, fmtMoney } from "@/client/helpers";
@@ -57,6 +61,9 @@ export function CommandCenter() {
   const [mode, setMode] = useState<Mode>(DEFAULT_MODE);
   const [ready, setReady] = useState(false);
   const toastId = useRef(0);
+  const scrolled = useScrolled(24);
+  const navRef = useRef<HTMLElement>(null);
+  const [indicator, setIndicator] = useState({ left: 0, width: 0 });
 
   // Demo tools exist only when the server allows them; otherwise the app is always in end-user mode.
   const demoMode = (env?.demoTools ?? true) && mode === "demo";
@@ -214,30 +221,44 @@ export function CommandCenter() {
   const inspectItem = inspectId ? byId.get(inspectId) : undefined;
   const sandboxLive = env?.paypalLive ?? false;
 
+  // Slide the tab underline to the active tab; re-measure on resize.
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = navRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+      if (el) setIndicator({ left: el.offsetLeft, width: el.offsetWidth });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [tab, demoMode]);
+
   return (
-    <div className="mx-auto flex min-h-screen max-w-[1500px] flex-col gap-4 px-4 pb-10 pt-4">
-      <header className="flex flex-wrap items-center gap-3 rounded-xl border border-ink-600/60 bg-ink-800/80 px-4 py-3 backdrop-blur">
+    <div className="mx-auto flex min-h-screen max-w-[1500px] flex-col gap-6 px-4 pb-16 pt-3">
+      <header className={cn("lg:sticky lg:top-3 z-30 flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-2.5 backdrop-blur-xl transition-all duration-300", scrolled ? "border-white/15 bg-ink-900/80 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.8)]" : "border-white/[0.06] bg-ink-900/40")}>
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-pp-navy to-pp-sky text-white shadow-lg"><ShieldCheck className="h-5 w-5" aria-hidden /></div>
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-pp-blue to-pp-sky text-[#fff] shadow-lg shadow-sky-500/30 ring-1 ring-white/20"><ShieldCheck className="h-5 w-5" aria-hidden /></div>
           <div className="leading-tight">
-            <div className="text-base font-bold text-white">PayPal MilestoneOS</div>
-            <div className="text-[11px] text-slate-400">AI-verified escrow, procurement & autonomous payouts</div>
+            <div className="text-sm font-semibold tracking-tight text-white">PayPal MilestoneOS</div>
+            <div className="hidden text-[11px] text-slate-400 md:block">AI-verified escrow, procurement & autonomous payouts</div>
           </div>
         </div>
-        <span className={cn("ml-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset", sandboxLive ? "bg-emerald-500/15 text-emerald-300 ring-emerald-400/40" : "bg-amber-500/10 text-amber-300 ring-amber-400/30")}>
-          <span className={cn("h-1.5 w-1.5 rounded-full", sandboxLive ? "bg-emerald-400" : "bg-amber-400")} aria-hidden />
+        <span className={cn("ml-2 hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset sm:inline-flex", sandboxLive ? "bg-emerald-500/15 text-emerald-300 ring-emerald-400/40" : "bg-amber-500/10 text-amber-300 ring-amber-400/30")}>
+          <span className="relative flex h-1.5 w-1.5">
+            <span className={cn("absolute inline-flex h-full w-full animate-ping-slow rounded-full", sandboxLive ? "bg-emerald-400/70" : "bg-amber-400/70")} aria-hidden />
+            <span className={cn("relative inline-flex h-1.5 w-1.5 rounded-full", sandboxLive ? "bg-emerald-400" : "bg-amber-400")} aria-hidden />
+          </span>
           {sandboxLive ? "PayPal Sandbox Connected" : "PayPal Sandbox (Simulated)"}
         </span>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {env?.demoTools && (
-            <div role="group" aria-label="Application mode" className="inline-flex rounded-md border border-ink-600 bg-ink-900 p-0.5 text-xs font-medium">
+            <div role="group" aria-label="Application mode" className="inline-flex rounded-lg border border-white/10 bg-ink-950/50 p-0.5 text-xs font-medium">
               {([["demo", "Demo mode"], ["user", "End-user mode"]] as const).map(([key, label]) => (
                 <button
                   key={key}
                   aria-pressed={(demoMode ? "demo" : "user") === key}
                   onClick={() => changeMode(key)}
-                  className={cn("rounded px-3 py-1.5 transition", (demoMode ? "demo" : "user") === key ? "bg-pp-blue text-white" : "text-slate-400 hover:text-white")}
+                  className={cn("rounded-md px-3 py-1.5 transition duration-200", (demoMode ? "demo" : "user") === key ? "bg-gradient-to-b from-pp-sky to-pp-blue text-[#fff] shadow-md shadow-sky-500/30" : "text-slate-400 hover:text-white")}
                 >
                   {label}
                 </button>
@@ -254,7 +275,7 @@ export function CommandCenter() {
               setInspectId(null);
               void reload(e.target.value);
             }}
-            className="max-w-[280px] rounded-md border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-white focus:border-pp-blue focus:outline-none"
+            className="max-w-[280px] rounded-lg border border-white/10 bg-ink-950/50 px-3 py-2 text-sm text-white transition focus:border-pp-sky focus:outline-none focus:ring-2 focus:ring-pp-sky/30"
           >
             {visibleProjects.map((p) => (
               <option key={p.id} value={p.id}>{p.scenarioKey ? `Scenario ${p.scenarioKey.replace("scn", "")}: ${p.title}` : p.title}</option>
@@ -265,8 +286,13 @@ export function CommandCenter() {
           {demoMode && <Button variant="outline" size="sm" onClick={() => setShowTelemetry(true)}><Activity className="h-4 w-4" /> APIMatic Live API Telemetry</Button>}
           <Button size="sm" onClick={() => setShowNew(true)}><Sparkles className="h-4 w-4" /> New Project</Button>
           {demoMode && <Button variant="ghost" size="sm" onClick={resetDemo} aria-label="Reset demo data" title="Reset demo data"><RotateCcw className="h-4 w-4" /></Button>}
+          <ThemeToggle />
         </div>
       </header>
+
+      <Scene name="hero">
+        <Hero held={kpis.held} released={kpis.released} onNewProject={() => setShowNew(true)} />
+      </Scene>
 
       {env?.simulationMode && (
         <Banner tone="info">
@@ -278,28 +304,39 @@ export function CommandCenter() {
       )}
       {loadError && <Banner tone="error">{loadError}</Banner>}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Key metrics">
-        <Kpi icon={<BadgeDollarSign className="h-5 w-5" />} label="Total Contract Value" value={fmtMoney(kpis.contractValue)} hint={bundle?.project.title ?? ""} tone="blue" />
-        <Kpi icon={<Lock className="h-5 w-5" />} label="Held in PayPal Escrow (Authorized)" value={fmtMoney(kpis.held)} hint="Authorized, not captured" tone="sky" />
-        <Kpi icon={<Wallet className="h-5 w-5" />} label="AI-Verified & Released (Captured/Paid)" value={fmtMoney(kpis.released)} hint="Only after audit score >= 80" tone="emerald" />
-        <Kpi icon={<ShieldCheck className="h-5 w-5" />} label="Disputes Prevented / Margin Saved" value={fmtMoney(kpis.protectedValue)} hint={`${kpis.blockedCount} release(s) blocked by guardrails`} tone="amber" />
-      </section>
+      <Scene name="metrics" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Reveal delay={0}><Kpi icon={<BadgeDollarSign className="h-5 w-5" />} label="Total Contract Value" amount={kpis.contractValue} hint={bundle?.project.title ?? ""} tone="blue" /></Reveal>
+        <Reveal delay={90}><Kpi icon={<Lock className="h-5 w-5" />} label="Held in PayPal Escrow (Authorized)" amount={kpis.held} hint="Authorized, not captured" tone="sky" /></Reveal>
+        <Reveal delay={180}><Kpi icon={<Wallet className="h-5 w-5" />} label="AI-Verified & Released (Captured/Paid)" amount={kpis.released} hint="Only after audit score >= 80" tone="emerald" /></Reveal>
+        <Reveal delay={270}><Kpi icon={<ShieldCheck className="h-5 w-5" />} label="Disputes Prevented / Margin Saved" amount={kpis.protectedValue} hint={`${kpis.blockedCount} release(s) blocked by guardrails`} tone="amber" /></Reveal>
+      </Scene>
 
-      <nav className="flex flex-wrap gap-1 border-b border-ink-600/60" role="tablist" aria-label="Workspace">
+      <Scene name="workspace" id="workspace" className="flex flex-col gap-4">
+      {bundle && (
+        <Reveal>
+          <EscrowFlow items={items} onFund={(i) => setFundId(i.id)} onAudit={(i) => setAudit({ id: i.id })} onChooseProduct={() => setTab("market")} onPurchase={(i) => void purchaseOrRetry(i)} />
+        </Reveal>
+      )}
+      <nav ref={navRef} className="relative flex gap-1 overflow-x-auto border-b border-white/10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Workspace">
         {TABS.map((t) => (
           <button
             key={t.key}
             role="tab"
             aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
-            className={cn("-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition", tab === t.key ? "border-pp-sky text-white" : "border-transparent text-slate-400 hover:text-slate-200")}
+            className={cn("flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-medium transition-colors duration-200", tab === t.key ? "text-white" : "text-slate-400 hover:text-slate-200")}
           >
-            <t.icon className="h-4 w-4" aria-hidden /> {demoMode ? t.demoLabel : t.userLabel}
+            <t.icon className={cn("h-4 w-4 transition-colors", tab === t.key && "text-pp-sky")} aria-hidden /> {demoMode ? t.demoLabel : t.userLabel}
           </button>
         ))}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute bottom-0 h-0.5 rounded-full bg-gradient-to-r from-pp-sky to-violet-400 shadow-[0_0_14px_rgba(0,156,222,0.9)] transition-all duration-300 ease-out"
+          style={{ left: indicator.left, width: indicator.width, opacity: indicator.width ? 1 : 0 }}
+        />
       </nav>
 
-      <main role="tabpanel">
+      <main key={tab} role="tabpanel" className="animate-fade-up">
         {!bundle ? (
           ready && !loadError && visibleProjects.length === 0 ? (
             <Card className="flex flex-col items-center gap-3 p-10 text-center">
@@ -325,7 +362,7 @@ export function CommandCenter() {
             onAmountEdit={editAmount}
           />
         ) : tab === "timeline" ? (
-          <TimelineView items={items} selectedId={selectedId} onSelect={setSelectedId} onInspect={(id) => { setSelectedId(id); setInspectId(id); }} />
+          <TimelineView items={items} selectedId={selectedId} onSelect={setSelectedId} onInspect={(id) => { setSelectedId(id); setInspectId(id); }} onFund={(i) => setFundId(i.id)} onAudit={(i) => setAudit({ id: i.id })} onReceipt={(i) => setReceiptId(i.id)} />
         ) : tab === "market" ? (
           <MarketplaceTab items={items} busyIds={busyIds} onApprove={approveProduct} onResource={resource} />
         ) : demoMode ? (
@@ -338,6 +375,7 @@ export function CommandCenter() {
           </Card>
         )}
       </main>
+      </Scene>
 
       {showNew && (
         <NewProjectModal
@@ -401,21 +439,22 @@ export function CommandCenter() {
   );
 }
 
-function Kpi({ icon, label, value, hint, tone }: { icon: React.ReactNode; label: string; value: string; hint: string; tone: "blue" | "sky" | "emerald" | "amber" }) {
+function Kpi({ icon, label, amount, hint, tone }: { icon: React.ReactNode; label: string; amount: number; hint: string; tone: "blue" | "sky" | "emerald" | "amber" }) {
+  const shown = useCountUp(amount);
   const tones = {
-    blue: "from-pp-navy/60 to-ink-800 text-sky-300",
-    sky: "from-sky-900/50 to-ink-800 text-sky-300",
-    emerald: "from-emerald-900/50 to-ink-800 text-emerald-300",
-    amber: "from-amber-900/40 to-ink-800 text-amber-300",
-  };
+    blue: { card: "from-pp-blue/25", chip: "bg-pp-blue/20 text-sky-300 ring-sky-400/30" },
+    sky: { card: "from-sky-500/20", chip: "bg-sky-500/20 text-sky-300 ring-sky-400/30" },
+    emerald: { card: "from-emerald-500/20", chip: "bg-emerald-500/20 text-emerald-300 ring-emerald-400/30" },
+    amber: { card: "from-amber-500/20", chip: "bg-amber-500/20 text-amber-300 ring-amber-400/30" },
+  }[tone];
   return (
-    <Card className={cn("bg-gradient-to-br p-4", tones[tone])}>
-      <div className="flex items-center justify-between text-xs font-medium text-slate-300">
+    <Card className={cn("h-full bg-gradient-to-br to-ink-800/60 p-5 transition duration-300 hover:-translate-y-1", tones.card)}>
+      <div className="flex items-start justify-between gap-3 text-xs font-medium text-slate-300">
         <span>{label}</span>
-        {icon}
+        <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset", tones.chip)}>{icon}</span>
       </div>
-      <div className="mt-2 text-2xl font-bold tabular-nums text-white">{value}</div>
-      <div className="mt-0.5 truncate text-[11px] text-slate-400">{hint}</div>
+      <div className="mt-3 text-3xl font-semibold tracking-tight tabular-nums text-white">{fmtMoney(shown)}</div>
+      <div className="mt-1 truncate text-[11px] text-slate-400">{hint}</div>
     </Card>
   );
 }

@@ -2,20 +2,99 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Registered so the aurora palette can transition smoothly between scroll scenes. */
+@property --aurora-a {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #0070ba;
+}
+@property --aurora-b {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #009cde;
+}
+@property --aurora-c {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #7c3aed;
+}
+
 :root {
   color-scheme: dark;
+  scroll-behavior: smooth;
+  scroll-padding-top: 96px;
+  --page-bg: #070b14;
+  --fg: 229 231 235;
+  --blob-opacity: 0.4;
+  --grid-line: rgb(var(--c-white) / 0.035);
+  --glass-top: rgb(var(--c-white) / 0.06);
+  --glass-bottom: rgb(var(--c-white) / 0.02);
+  --glass-edge: rgb(var(--c-white) / 0.09);
+  --card-shadow: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 20px 40px -24px rgb(0 0 0 / 0.7);
+  --pop-shadow: 0 30px 80px -20px rgb(0 0 0 / 0.8);
+  --scrollbar: #26335a;
+  --scrollbar-hover: #34457a;
 }
 
-html,
-body {
-  background: #070b14;
-  color: #e5e7eb;
+html.light {
+  color-scheme: light;
+  --page-bg: #f1f5fb;
+  --fg: 30 41 59;
+  --blob-opacity: 0.26;
+  --grid-line: rgb(var(--c-white) / 0.06);
+  --glass-top: rgb(255 255 255 / 0.85);
+  --glass-bottom: rgb(255 255 255 / 0.55);
+  --glass-edge: rgb(var(--c-white) / 0.09);
+  --card-shadow: 0 1px 0 rgb(255 255 255 / 0.9) inset, 0 12px 32px -18px rgb(30 41 59 / 0.28);
+  --pop-shadow: 0 30px 80px -24px rgb(30 41 59 / 0.35);
+  --scrollbar: #c2cde2;
+  --scrollbar-hover: #a9b8d4;
+}
+
+/* The body stays transparent so the fixed ambient layer (z-index -1) shows through. */
+html {
+  background: var(--page-bg);
+  color: rgb(var(--fg));
+}
+
+/* Circular reveal when switching theme (View Transitions API); the animation itself runs from theme.ts. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
 }
 
 body {
-  background-image: radial-gradient(1200px 500px at 15% -10%, rgba(0, 112, 186, 0.18), transparent),
-    radial-gradient(900px 400px at 90% -5%, rgba(16, 185, 129, 0.1), transparent);
-  background-attachment: fixed;
+  --aurora-a: #0070ba;
+  --aurora-b: #009cde;
+  --aurora-c: #7c3aed;
+  transition: --aurora-a 1.4s ease, --aurora-b 1.4s ease, --aurora-c 1.4s ease;
+}
+
+body[data-scene="metrics"] {
+  --aurora-a: #059669;
+  --aurora-b: #0ea5e9;
+  --aurora-c: #0070ba;
+}
+
+body[data-scene="workspace"] {
+  --aurora-a: #6d28d9;
+  --aurora-b: #0070ba;
+  --aurora-c: #db2777;
+}
+
+html.light body[data-scene="metrics"] {
+  --aurora-a: #10b981;
+  --aurora-b: #38bdf8;
+}
+
+html.light body[data-scene="workspace"] {
+  --aurora-a: #8b5cf6;
+  --aurora-c: #38bdf8;
+}
+
+::selection {
+  background: rgba(0, 156, 222, 0.35);
 }
 
 ::-webkit-scrollbar {
@@ -23,16 +102,140 @@ body {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #26335a;
+  background: var(--scrollbar);
   border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-hover);
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 
+/* ---------- Ambient background ---------- */
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ambient-parallax {
+  position: absolute;
+  inset: 0;
+  transform: translate3d(0, calc(var(--scroll-y, 0) * var(--speed, 0) * 1px), 0);
+  will-change: transform;
+}
+
+.ambient-blob {
+  position: absolute;
+  border-radius: 9999px;
+  opacity: var(--blob-opacity);
+  animation: blob-drift 22s ease-in-out infinite;
+}
+
+@keyframes blob-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(5vw, -4vh, 0) scale(1.12);
+  }
+  66% {
+    transform: translate3d(-4vw, 5vh, 0) scale(0.94);
+  }
+}
+
+.ambient-grid {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, #000 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, #000 20%, transparent 75%);
+}
+
+.scroll-progress {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 70;
+  height: 2px;
+  transform-origin: left;
+  transform: scaleX(var(--scroll-p, 0));
+  background: linear-gradient(90deg, var(--aurora-b), var(--aurora-c));
+  box-shadow: 0 0 12px var(--aurora-b);
+  pointer-events: none;
+}
+
+/* ---------- Reveal on scroll ---------- */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px) scale(0.985);
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1), transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---------- Cards ---------- */
+.spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), rgba(0, 156, 222, 0.14), transparent 60%);
+}
+.spotlight:hover::before {
+  opacity: 1;
+}
+
+.glass {
+  background: linear-gradient(180deg, var(--glass-top), var(--glass-bottom));
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--card-shadow);
+  backdrop-filter: blur(16px);
+}
+
+.text-gradient {
+  background: linear-gradient(100deg, rgb(var(--c-white)) 10%, var(--aurora-b) 45%, var(--aurora-c) 80%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
 .ag-theme-milestone .ag-cell {
   display: flex;
   align-items: center;
+}
+
+/* Align Bryntum's neutral surfaces with the app's navy palette in dark mode. */
+html.dark .mos-bryntum {
+  --b-neutral-100: #0b1220;
+  --b-neutral-99: #0c1424;
+  --b-neutral-98: #0e1729;
+  --b-neutral-97: #111b30;
+  --b-neutral-96: #131e35;
+  --b-neutral-95: #16223a;
+  --b-neutral-94: #18253f;
+  --b-neutral-93: #1a2843;
+  --b-neutral-92: #1c2b48;
+  --b-neutral-91: #1e2e4c;
+  --b-neutral-90: #203150;
+  --b-neutral-85: #26395f;
+  --b-neutral-80: #2d426c;
+}
+html.light .mos-bryntum .b-gantt-task.mos-unlock,
+html.light .mos-bryntum .b-gantt-task.mos-payout {
+  color: #059669;
 }
 
 /* Bryntum Gantt task colours keyed by escrow status (class set from ganttData.ts). */
@@ -69,4 +272,21 @@ body {
 }
 .mos-bryntum .b-gantt-task.mos-unlock:not(.mos-unlocked) {
   color: #94a3b8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
 }

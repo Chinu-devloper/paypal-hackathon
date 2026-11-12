@@ -12,15 +12,15 @@ const LABEL_W = 230;
 const HEADER_H = 48;
 
 const BAR_COLOR: Partial<Record<ItemStatus, string>> = {
-  PAID_OUT: "from-emerald-600 to-emerald-500",
-  CAPTURED: "from-emerald-600 to-emerald-500",
+  PAID_OUT: "from-[#059669] to-[#10b981]",
+  CAPTURED: "from-[#059669] to-[#10b981]",
   AUTHORIZED: "from-pp-navy to-pp-blue",
-  AI_AUDITING: "from-violet-700 to-violet-500",
-  REVISION_NEEDED: "from-amber-600 to-amber-500",
-  SECURITY_FLAGGED: "from-red-700 to-red-500",
-  READY_TO_ORDER: "from-sky-700 to-sky-500",
-  REFUNDED: "from-fuchsia-700 to-fuchsia-500",
-  VOIDED: "from-slate-700 to-slate-600",
+  AI_AUDITING: "from-[#6d28d9] to-[#8b5cf6]",
+  REVISION_NEEDED: "from-[#d97706] to-[#f59e0b]",
+  SECURITY_FLAGGED: "from-[#b91c1c] to-[#ef4444]",
+  READY_TO_ORDER: "from-[#0369a1] to-[#0ea5e9]",
+  REFUNDED: "from-[#a21caf] to-[#d946ef]",
+  VOIDED: "from-[#334155] to-[#475569]",
 };
 
 const dayIndex = (iso: string, origin: number) => Math.round((new Date(`${iso}T00:00:00Z`).getTime() - origin) / DAY_MS);
@@ -158,8 +158,8 @@ export function MilestoneTimeline({ items, selectedId, onSelect, onInspect }: Pr
                       onClick={() => { onSelect(item.id); onInspect(item.id); }}
                       title={`${item.title}\n${fmtDate(item.startDate)} - ${fmtDate(item.endDate)}\n${STATUS_META[item.status].label}`}
                       className={cn(
-                        "absolute z-20 flex items-center gap-2 overflow-hidden rounded-md bg-gradient-to-r px-2 text-left text-[11px] font-semibold text-white shadow-md ring-1 ring-white/10 transition hover:brightness-125 focus:outline-none focus-visible:ring-2 focus-visible:ring-white",
-                        BAR_COLOR[item.status] ?? "from-slate-700 to-slate-500",
+                        "absolute z-20 flex items-center gap-2 overflow-hidden rounded-md bg-gradient-to-r px-2 text-left text-[11px] font-semibold text-[#fff] shadow-md ring-1 ring-white/10 transition hover:brightness-125 focus:outline-none focus-visible:ring-2 focus-visible:ring-white",
+                        BAR_COLOR[item.status] ?? "from-[#334155] to-[#64748b]",
                         selectedId === item.id && "ring-2 ring-white",
                       )}
                       style={{ left: barX(item), top: idx * ROW_H + 11, width: w, height: ROW_H - 22 }}
@@ -177,7 +177,7 @@ export function MilestoneTimeline({ items, selectedId, onSelect, onInspect }: Pr
               })}
 
               <div
-                className="absolute z-20 flex items-center gap-1.5 rounded-md bg-emerald-600/90 px-2 text-[11px] font-semibold text-white"
+                className="absolute z-20 flex items-center gap-1.5 rounded-md bg-emerald-600/90 px-2 text-[11px] font-semibold text-[#fff]"
                 style={{ left: payoutX - 4, top: items.length * ROW_H + 13, height: ROW_H - 26 }}
               >
                 {fmtMoney(total)}

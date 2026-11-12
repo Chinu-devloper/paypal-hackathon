@@ -48,11 +48,11 @@ function CallRow({ call }: { call: ApiTelemetryEntry }) {
           <div className="grid gap-2 lg:grid-cols-2">
             <div>
               <div className="mb-1 font-semibold uppercase tracking-wider text-slate-500">Request</div>
-              <pre className="max-h-64 overflow-auto rounded bg-black/40 p-2 font-mono text-slate-300">{JSON.stringify({ headers: call.requestHeaders, body: call.requestBody }, null, 2)}</pre>
+              <pre className="max-h-64 overflow-auto rounded bg-ink-950/60 p-2 font-mono text-slate-300">{JSON.stringify({ headers: call.requestHeaders, body: call.requestBody }, null, 2)}</pre>
             </div>
             <div>
               <div className="mb-1 font-semibold uppercase tracking-wider text-slate-500">Response</div>
-              <pre className="max-h-64 overflow-auto rounded bg-black/40 p-2 font-mono text-slate-300">{JSON.stringify(call.responseBody, null, 2) ?? "(empty body)"}</pre>
+              <pre className="max-h-64 overflow-auto rounded bg-ink-950/60 p-2 font-mono text-slate-300">{JSON.stringify(call.responseBody, null, 2) ?? "(empty body)"}</pre>
             </div>
           </div>
         </div>
